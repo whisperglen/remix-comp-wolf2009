@@ -1,9 +1,12 @@
 #include "std_include.hpp"
 #include "flags.hpp"
+#include "mINI\ini.h"
+#include <tchar.h>
 
 namespace shared::common
 {
 	std::vector<std::string> flags::m_enabled_flags;
+	mINI::INIStructure iniconf;
 
 	// gets the singleton instance
 	flags& flags::get()
@@ -19,6 +22,37 @@ namespace shared::common
 		{
 			if (utils::str_to_lower(entry) == utils::str_to_lower(flag)) {
 				return true;
+			}
+		}
+
+		if (iniconf.has("Flags"))
+		{
+			if (iniconf["Flags"].has(flag) && iniconf["Flags"].get(flag).compare("0") != 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool flags::is_shader_ignored(uint32_t hash)
+	{
+		get().parse_flags();
+
+		if (iniconf.has("Shader_Ignore"))
+		{
+			char hexstr[9];
+			snprintf(hexstr, sizeof(hexstr), "%08x", hash);
+
+			if (iniconf["Shader_Ignore"].has("vertex")) {
+				std::string vs = iniconf["Shader_Ignore"].get("vertex");
+				if(vs.contains(hexstr))
+					return true;
+			}
+			if (iniconf["Shader_Ignore"].has("pixel")) {
+				std::string vs = iniconf["Shader_Ignore"].get("pixel");
+				if (vs.contains(hexstr))
+					return true;
 			}
 		}
 
@@ -51,6 +85,32 @@ namespace shared::common
 
 				LocalFree(argv);
 			}
+
+			const int PATH_SZ = 1024;
+			char exename[PATH_SZ] = { 0 };
+			std::string game_cfg;
+			DWORD ercd = GetModuleFileNameA(NULL, exename, PATH_SZ);
+			if (ercd > 0)
+			{
+				char* name = strrchr(exename, '\\');
+				if (name) {
+					name++;
+					size_t count = strlen(name);
+					char* tmp = strrchr(exename, '.');
+					if (tmp) {
+						count = tmp - name;
+					}
+					game_cfg.append(name, count);
+				}
+			}
+			else
+			{
+				game_cfg.assign("game");
+			}
+			game_cfg.append(".ini");
+
+			mINI::INIFile inifile(game_cfg);
+			inifile.read(iniconf);
 		}
 	}
 }

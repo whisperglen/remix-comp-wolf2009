@@ -1,7 +1,12 @@
 #pragma once
+#include "game\structs.hpp"
 
 namespace comp
 {
+
+	extern comp::game::state_s gstate;
+	extern shared::common::ShaderCache shaders;
+
 	extern bool g_rendered_first_primitive;
 
 	namespace tex_addons
@@ -10,6 +15,8 @@ namespace comp
 		extern LPDIRECT3DTEXTURE9 berry;
 		extern void init_texture_addons(bool release = false);
 	}
+
+	extern void handle_mats_inversion();
 
 	class drawcall_mod_context
 	{
@@ -354,6 +361,11 @@ namespace comp
 		}
 
 		void manually_trigger_remix_injection(IDirect3DDevice9* dev);
+		bool prepare_drawcall(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
+
+		void on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* pDecl);
+		void on_set_vertex_shader(IDirect3DDevice9* dev, IDirect3DVertexShader9* pShader);
+		void on_set_pixel_shader(IDirect3DDevice9* dev, IDirect3DPixelShader9* pShader);
 		HRESULT on_draw_primitive(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const UINT& StartVertex, const UINT& PrimitiveCount);
 		HRESULT on_draw_indexed_prim(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const INT& BaseVertexIndex, const UINT& MinVertexIndex, const UINT& NumVertices, const UINT& startIndex, const UINT& primCount);
 

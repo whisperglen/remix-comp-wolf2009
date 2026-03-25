@@ -11,6 +11,7 @@ namespace shared::common
 		static flags& get();
 
 		static bool has_flag(const std::string& flag);
+		static bool is_shader_ignored(uint32_t hash);
 
 	private:
 		flags() : m_initialized(false) {}

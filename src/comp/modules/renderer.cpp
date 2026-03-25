@@ -1,5 +1,8 @@
 #include "std_include.hpp"
 #include "renderer.hpp"
+#include "game/structs.hpp"
+#include "shared/common/shader_cache.hpp"
+#include "shared/common/flags.hpp"
 
 #include "imgui.hpp"
 
@@ -7,6 +10,9 @@ namespace comp
 {
 	bool g_rendered_first_primitive = false;
 	int g_is_rendering_something = 0;
+
+	comp::game::state_s gstate;
+	shared::common::ShaderCache shaders;
 
 	namespace tex_addons
 	{
@@ -49,8 +55,243 @@ namespace comp
 		return ctx;
 	}
 
+	bool renderer::prepare_drawcall(IDirect3DDevice9* dev, drawcall_mod_context& ctx)
+	{
+		using shared::common::ShaderCache;
+
+		bool with_ff = false;
+
+		if (gstate.vs_type == ShaderCache::SHADER_IGNORE || gstate.ps_type == ShaderCache::SHADER_IGNORE)
+		{
+			ctx.modifiers.do_not_render = true;
+		}
+		else if (gstate.vs_type == ShaderCache::SHADER_UI || gstate.ps_type == ShaderCache::SHADER_UI || gstate.proj._34 == 0.0f)
+		{
+			D3DXMATRIX identity;
+			D3DXMatrixIdentity(&identity);
+
+			dev->SetTransform(D3DTS_PROJECTION, &gstate.proj);
+			dev->SetTransform(D3DTS_VIEW, &gstate.view);
+			dev->SetTransform(D3DTS_WORLD, &identity);
+
+			with_ff = false;
+		}
+		else if (gstate.vs_type == ShaderCache::SHADER_GEO)
+		{
+			handle_mats_inversion();
+
+			float* c0 = &gstate.vs_contants[0][0];
+			D3DXMATRIX mvpmat, mv, model;
+			float* mvp = &mvpmat.m[0][0];
+
+			mvp[0] = c0[0]; mvp[1] = c0[4]; mvp[2] = c0[8]; mvp[3] = c0[12];
+			mvp[4] = c0[1]; mvp[5] = c0[5]; mvp[6] = c0[9]; mvp[7] = c0[13];
+			mvp[8] = c0[2]; mvp[9] = c0[6]; mvp[10] = c0[10]; mvp[11] = c0[14];
+			mvp[12] = c0[3]; mvp[13] = c0[7]; mvp[14] = c0[11]; mvp[15] = c0[15];
+
+			D3DXMatrixMultiply(&mv, &mvpmat, &gstate.proj_inv);
+			D3DXMatrixMultiply(&model, &mv, &gstate.view_inv);
+
+			dev->SetTransform(D3DTS_PROJECTION, &gstate.proj);
+			dev->SetTransform(D3DTS_VIEW, &gstate.view);
+#if 1
+			dev->SetTransform(D3DTS_WORLD, &model);
+#else
+			D3DXMATRIX identity;
+			D3DXMatrixIdentity(&identity);
+			dev->SetTransform(D3DTS_WORLD, &identity);
+#endif
+
+			with_ff = true;
+		}
+		else if (gstate.vs_type == ShaderCache::SHADER_MODEL)
+		{
+			handle_mats_inversion();
+
+			float* c4 = &gstate.vs_contants[4][0];
+			D3DXMATRIX mvmat, model;
+			float* mv = &mvmat.m[0][0];
+
+			mv[0] = c4[0]; mv[1] = c4[4]; mv[2] = c4[8]; mv[3] = 0;
+			mv[4] = c4[1]; mv[5] = c4[5]; mv[6] = c4[9]; mv[7] = 0;
+			mv[8] = c4[2]; mv[9] = c4[6]; mv[10] = c4[10]; mv[11] = 0;
+			mv[12] = c4[3]; mv[13] = c4[7]; mv[14] = c4[11]; mv[15] = 1;
+
+			D3DXMatrixMultiply(&model, &mvmat, &gstate.view_inv);
+
+			dev->SetTransform(D3DTS_PROJECTION, &gstate.proj);
+			dev->SetTransform(D3DTS_VIEW, &gstate.view);
+#if 1
+			dev->SetTransform(D3DTS_WORLD, &model);
+#else
+			D3DXMATRIX identity;
+			D3DXMatrixIdentity(&identity);
+			dev->SetTransform(D3DTS_WORLD, &identity);
+#endif
+
+			with_ff = true;
+		}
+		else if (gstate.vs_type == ShaderCache::SHADER_LIGHT || gstate.ps_type == ShaderCache::SHADER_LIGHT)
+		{
+			ctx.modifiers.do_not_render = true;
+		}
+		else if (gstate.vs_type == ShaderCache::SHADER_SKINNING)
+		{
+			//ctx.modifiers.do_not_render = true;
+		}
+
+		if (with_ff)
+		{
+			/*
+			 * Setup texture stages for FFP mode.
+			 * Stage 0: modulate texture color with vertex/material diffuse.
+			 * Stage 1+: disabled.
+			 */
+			dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_CURRENT);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+			dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+			dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+			dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, 0);
+
+			/* Disable stages 1-7: the game binds shadow maps, LUTs, normal maps etc.
+			 * on higher stages for its pixel shaders. In FFP mode those stages become
+			 * active and Remix may consume the wrong textures. */
+			for (int i = 1; i < 8; i++) {
+				dev->SetTextureStageState(i, D3DTSS_COLOROP, D3DTOP_DISABLE);
+				dev->SetTextureStageState(i, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+			}
+		}
+
+		return with_ff;
+	}
+
 
 	// ----
+	void renderer::on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* pDecl)
+	{
+		BOOL foundSkinning = FALSE;
+		D3DVERTEXELEMENT9 decinfo[10];
+		UINT num = 0;
+		pDecl->GetDeclaration(nullptr, &num);
+		if (num <= ARRAYSIZE(decinfo))
+		{
+			pDecl->GetDeclaration(decinfo, &num);
+			for (UINT i = 0; i < num; i++)
+			{
+				if (decinfo[i].Usage == D3DDECLUSAGE_BLENDINDICES || decinfo[i].Usage == D3DDECLUSAGE_BLENDWEIGHT)
+				{
+					foundSkinning = TRUE;
+					break;
+				}
+			}
+		}
+		else
+		{
+			shared::common::log("d3d9", std::format("VertexDeclaration needs more space {:d}", num), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
+		}
+
+		gstate.renderSkinning = foundSkinning;
+	}
+
+	void renderer::on_set_vertex_shader(IDirect3DDevice9* dev, IDirect3DVertexShader9* pShader)
+	{
+		using namespace shared::common;
+		using namespace comp::game;
+
+		ShaderCache::EShaderType type = shaders.is_shader_whitelisted(pShader);
+		if (ShaderCache::SHADER_UNKNOWN == type)
+		{
+			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
+			std::string decomp;
+			uint32_t hash = shaders.get_shader_decomp(pShader, &decomp, dump_shader);
+
+			if (decomp.contains("$mSkinToViewTransforms"))
+			{
+				//skinning c0, 75 x vec4
+				type = ShaderCache::SHADER_SKINNING;
+			}
+			else if (decomp.contains("$mModelViewProjection"))
+			{
+				//geo c0, 4 x vec4
+				type = ShaderCache::SHADER_GEO;
+				if (0 && shared::common::flags::is_shader_ignored(hash))
+				{
+					type = ShaderCache::SHADER_IGNORE;
+				}
+				else if (decomp.contains("$vSrcWidthHeight"))
+				{
+					type = ShaderCache::SHADER_IGNORE;
+				}
+				else if (decomp.contains("$vWScale"))
+				{
+					//light shader, we need stuff from pixel shader
+					type = ShaderCache::SHADER_LIGHT;
+				}
+				else if (decomp.contains("$mModelView"))
+				{
+					//geo c4, 3 x vec4
+					type = ShaderCache::SHADER_MODEL;
+				}
+			}
+			else if (decomp.contains("vs_1_1") && decomp.contains("mov oPos.zw, v0.zwww"))
+			{
+				type = ShaderCache::SHADER_UI;
+			}
+			else
+			{
+				type = ShaderCache::SHADER_IGNORE;
+			}
+
+			gstate.vs_type = type;
+			shaders.add_to_whitelist(hash, type);
+		}
+		else
+		{
+			gstate.vs_type = type;
+		}
+	}
+
+	void renderer::on_set_pixel_shader(IDirect3DDevice9* dev, IDirect3DPixelShader9* pShader)
+	{
+
+		using namespace shared::common;
+		using namespace comp::game;
+
+		ShaderCache::EShaderType type = shaders.is_shader_whitelisted(pShader);
+		if (ShaderCache::SHADER_UNKNOWN == type)
+		{
+			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
+			std::string decomp;
+			uint32_t hash = shaders.get_shader_decomp(pShader, &decomp, dump_shader);
+
+			if (shared::common::flags::is_shader_ignored(hash))
+			{
+				type = ShaderCache::SHADER_IGNORE;
+			}
+			else if (decomp.contains("$fDesaturationAmount") || decomp.contains("$vKernelWeights") || decomp.contains("GBufferDiffuse"))
+			{
+				type = ShaderCache::SHADER_IGNORE;
+			}
+			else if (decomp.contains("$vBoundingSphereCenterRadiusSqrd") || decomp.contains("$vViewLightPosition"))
+			{
+				type = ShaderCache::SHADER_LIGHT;
+			}
+			else if (decomp.contains("ps_1_1") && decomp.contains("mad r0, r0, c2, c3"))
+			{
+				type = ShaderCache::SHADER_UI;
+			}
+
+			gstate.ps_type = type;
+			shaders.add_to_whitelist(hash, type);
+		}
+		else
+		{
+			gstate.ps_type = type;
+		}
+	}
 
 	HRESULT renderer::on_draw_primitive(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const UINT& StartVertex, const UINT& PrimitiveCount)
 	{
@@ -69,7 +310,7 @@ namespace comp
 		auto& ctx = setup_context(dev);
 
 		// use any logic to conditionally set this to disable the vertex shader and use fixed function fallback
-		bool render_with_ff = false;
+		bool render_with_ff = prepare_drawcall(dev, ctx);
 
 		/*if (g_is_rendering_something)
 		{
@@ -133,7 +374,7 @@ namespace comp
 		const auto im = imgui::get();
 
 		// use any logic to conditionally set this to disable the vertex shader and use fixed function fallback
-		bool render_with_ff = false;
+		bool render_with_ff = prepare_drawcall(dev, ctx);
 
 		// any drawcall modifications in here
 		if (!shared::globals::imgui_is_rendering)
@@ -374,5 +615,26 @@ namespace comp
 	renderer::~renderer()
 	{
 		tex_addons::init_texture_addons(true);
+	}
+
+
+	void handle_mats_inversion()
+	{
+		if (gstate.proj_inv_dirty)
+		{
+			if (!D3DXMatrixInverse(&gstate.proj_inv, nullptr, &gstate.proj))
+			{
+				D3DXMatrixIdentity(&gstate.proj_inv);
+			}
+			gstate.proj_inv_dirty = 0;;
+		}
+		if (gstate.view_inv_dirty)
+		{
+			if (!D3DXMatrixInverse(&gstate.view_inv, nullptr, &gstate.view))
+			{
+				D3DXMatrixIdentity(&gstate.view_inv);
+			}
+			gstate.view_inv_dirty = 0;
+		}
 	}
 }

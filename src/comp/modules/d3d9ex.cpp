@@ -485,6 +485,11 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexDeclaration(IDirect3DVertexDeclaration9* pDecl)
 	{
+		if (pDecl && renderer::is_initialized())
+		{
+			renderer::get()->on_vertex_declaration(m_pIDirect3DDevice9, pDecl);
+		}
+
 		return m_pIDirect3DDevice9->SetVertexDeclaration(pDecl);
 	}
 
@@ -510,6 +515,11 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexShader(IDirect3DVertexShader9* pShader)
 	{
+		if (pShader && renderer::is_initialized())
+		{
+			renderer::get()->on_set_vertex_shader(m_pIDirect3DDevice9, pShader);
+		}
+
 		return m_pIDirect3DDevice9->SetVertexShader(pShader);
 	}
 
@@ -520,6 +530,10 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexShaderConstantF(UINT StartRegister, CONST float* pConstantData, UINT Vector4fCount)
 	{
+		if (StartRegister < 256)
+		{
+			memcpy(&gstate.vs_contants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
+		}
 		return m_pIDirect3DDevice9->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
 
@@ -585,6 +599,12 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetPixelShader(IDirect3DPixelShader9* pShader)
 	{
+
+		if (pShader && renderer::is_initialized())
+		{
+			renderer::get()->on_set_pixel_shader(m_pIDirect3DDevice9, pShader);
+		}
+
 		return m_pIDirect3DDevice9->SetPixelShader(pShader);
 	}
 
@@ -595,6 +615,10 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetPixelShaderConstantF(UINT StartRegister, CONST float* pConstantData, UINT Vector4fCount)
 	{
+		if (StartRegister < 256)
+		{
+			memcpy(&gstate.ps_contants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
+		}
 		return m_pIDirect3DDevice9->SetPixelShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
 

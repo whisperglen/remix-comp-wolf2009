@@ -1,5 +1,6 @@
 #pragma once
 #include "structs.hpp"
+#include "shared/common/shader_cache.hpp"
 
 namespace comp::game
 {
@@ -11,8 +12,6 @@ namespace comp::game
 	//inline IDirect3DDevice9* get_d3d_device() {
 	//	return reinterpret_cast<IDirect3DDevice9*>(*d3d_dev_sample_addr);
 	//}
-
-	extern some_struct_containing_matrices* vp;
 
 
 	// --------------
