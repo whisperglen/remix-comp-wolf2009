@@ -3,6 +3,7 @@
 
 #include "comp.hpp"
 #include "shared/common/flags.hpp"
+#include "modules/borderless.hpp"
 #include "modules/d3d9ex.hpp"
 
 namespace comp

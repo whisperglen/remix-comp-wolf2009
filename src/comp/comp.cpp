@@ -2,6 +2,7 @@
 
 #include "modules/imgui.hpp"
 #include "modules/renderer.hpp"
+#include "modules/borderless.hpp"
 #include "shared/common/remix_api.hpp"
 #include "game/game.hpp"
 
@@ -47,6 +48,9 @@ namespace comp
 
 	void main()
 	{
+		// Apply borderless fullscreen now that shared::globals::main_window is valid.
+		borderless::apply_to_window(shared::globals::main_window);
+
 		// #Step 2: init remix api if you want to use it or comment it otherwise
 		// Requires "exposeRemixApi = True" in the "bridge.conf" that is located in the .trex folder
 		//shared::common::remix_api::initialize(nullptr, nullptr, nullptr, false);

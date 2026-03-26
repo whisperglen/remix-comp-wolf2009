@@ -739,6 +739,20 @@ namespace comp
 
 	HRESULT __stdcall d3d9ex::_d3d9::CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DDevice9** ppReturnedDeviceInterface)
 	{
+		// Force windowed mode + native backbuffer so the borderless window renders
+		// at full resolution rather than the game's 640x480 windowed size.
+		if (pPresentationParameters)
+		{
+			pPresentationParameters->Windowed                  = TRUE;
+			pPresentationParameters->FullScreen_RefreshRateInHz = 0;
+			pPresentationParameters->BackBufferWidth           = static_cast<UINT>(GetSystemMetrics(SM_CXSCREEN));
+			pPresentationParameters->BackBufferHeight          = static_cast<UINT>(GetSystemMetrics(SM_CYSCREEN));
+			shared::common::log("d3d9",
+				std::format("CreateDevice: forcing windowed {}x{}",
+					pPresentationParameters->BackBufferWidth, pPresentationParameters->BackBufferHeight),
+				shared::common::LOG_TYPE::LOG_TYPE_GREEN, true);
+		}
+
 		HRESULT hres = m_pIDirect3D9->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
 		shared::common::log("d3d9", "m_pIDirect3D9->CreateDevice", shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, false);
 		*ppReturnedDeviceInterface = new d3d9ex::D3D9Device(*ppReturnedDeviceInterface);
@@ -843,6 +857,14 @@ namespace comp
 
 	HRESULT __stdcall d3d9ex::_d3d9ex::CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DDevice9** ppReturnedDeviceInterface)
 	{
+		if (pPresentationParameters)
+		{
+			pPresentationParameters->Windowed                  = TRUE;
+			pPresentationParameters->FullScreen_RefreshRateInHz = 0;
+			pPresentationParameters->BackBufferWidth           = static_cast<UINT>(GetSystemMetrics(SM_CXSCREEN));
+			pPresentationParameters->BackBufferHeight          = static_cast<UINT>(GetSystemMetrics(SM_CYSCREEN));
+		}
+
 		HRESULT hres = m_pIDirect3D9Ex->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
 		shared::common::log("d3d9", "m_pIDirect3D9Ex->CreateDevice", shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, false);
 
