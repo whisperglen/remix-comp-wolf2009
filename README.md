@@ -5,7 +5,7 @@ A RTX Remix compatibility mod for Halo: Combat Evolved, built on top of https://
 <br>
 </div>
 
-# Overview
+## Overview
 This repository contains a compatibility mod that enables NVIDIA RTX Remix support for Halo: Combat Evolved.  
 It is built on top of xoxor4d's RTX Remix Compatibility Codebase.
 
