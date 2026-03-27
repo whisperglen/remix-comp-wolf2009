@@ -15,11 +15,16 @@ namespace comp::game
 		bool proj_inv_dirty;
 		D3DXMATRIX proj_inv;
 
-		bool renderSkinning;
 		bool hasMV;
 		int vs_type;
 		int ps_type;
+		int albedoStage;
+		int alphaRef;
 
+		bool declHasSkinning;
+		D3DVERTEXBLENDFLAGS weights;
+
+		void* renderTargets[10];
 		float vs_contants[256][4];
 		float ps_contants[256][4];
 	};

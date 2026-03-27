@@ -52,13 +52,6 @@ namespace comp::game
 	// init any adresses here
 	void init_game_addresses()
 	{
-
-		memset(&gstate, 0, sizeof(gstate));
-		D3DXMatrixIdentity(&gstate.proj);
-		D3DXMatrixIdentity(&gstate.view);
-		D3DXMatrixIdentity(&gstate.proj_inv);
-		D3DXMatrixIdentity(&gstate.view_inv);
-
 		const bool use_pattern = !shared::common::flags::has_flag("no_pattern");
 		if (use_pattern) {
 			shared::common::log("Game", "Getting offsets ...", shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, false);
@@ -66,6 +59,8 @@ namespace comp::game
 
 		std::uint32_t total_pattern_count = 0u;
 		std::uint32_t found_pattern_count = 0u;
+
+		renderer::prepare_structs();
 
 
 #pragma region GAME_VARIABLES

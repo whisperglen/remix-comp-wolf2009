@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <direct.h>
 
 namespace shared::common
 {
@@ -33,7 +34,7 @@ namespace shared::common
 			const uint32_t hash = shared::utils::data_hash32(bytecode.data(), bytecode_size);
 			shader_hash_cache_[shader] = hash;
 
-#if DEBUG
+#if DEBUG && 0
 			// log shaders
 			static std::set<uint32_t> seen_hashes;
 			if (seen_hashes.insert(hash).second) {
@@ -66,7 +67,7 @@ namespace shared::common
 			const uint32_t hash = shared::utils::data_hash32(bytecode.data(), bytecode_size);
 			shader_hash_cache_[shader] = hash;
 
-#if DEBUG
+#if DEBUG && 0
 			// log shaders
 			static std::set<uint32_t> seen_hashes;
 			if (seen_hashes.insert(hash).second) {
@@ -75,6 +76,38 @@ namespace shared::common
 #endif
 
 			return hash;
+		}
+
+		void write_shader(const char *prefix, uint32_t hash, const void *data, size_t sz)
+		{
+			char fname[64];
+			snprintf(fname, sizeof(fname), "shaders\\%s_%x.txt", prefix, hash);
+			FILE* f;
+			if ((f = fopen(fname, "r"))) {
+				fclose(f);
+			}
+			else
+			{
+				f = fopen(fname, "wb");
+				if (!f)
+				{
+					_CRT_UNUSED(_mkdir("shaders"));
+					f = fopen(fname, "wb");
+				}
+
+				if (f)
+				{
+					int retry = 3;
+					while (1 != fwrite(data, sz, 1, f))
+					{
+						retry--;
+						if (retry <= 0) break;
+					}
+					fclose(f);
+				}
+				else
+					shared::common::log("shader", std::format("Cannot open file for dumps {:s}", fname), shared::common::LOG_TYPE::LOG_TYPE_WARN, true);
+			}
 		}
 
 		uint32_t get_shader_decomp(IDirect3DVertexShader9* shader, std::string* decomp, bool data_dump)
@@ -113,28 +146,7 @@ namespace shared::common
 				{
 					if (data_dump)
 					{
-						char fname[64];
-						snprintf(fname, sizeof(fname), "shaders\\vs_%x.txt", hash);
-						FILE* f;
-						if ((f = fopen(fname, "r"))) {
-							fclose(f);
-						}
-						else
-						{
-							f = fopen(fname, "wb");
-							if (f)
-							{
-								int retry = 3;
-								while (1 != fwrite(decompbuf->GetBufferPointer(), decompbuf->GetBufferSize(), 1, f))
-								{
-									retry--;
-									if (retry <= 0) break;
-								}
-								fclose(f);
-							}
-							else
-								shared::common::log("shader", std::format("Cannot open file for dumps {:s}", fname), shared::common::LOG_TYPE::LOG_TYPE_WARN, true);
-						}
+						write_shader("vs", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
 					}
 					if (decomp)
 					{
@@ -144,7 +156,7 @@ namespace shared::common
 				}
 				else
 				{
-					shared::common::log("shader", std::format("Shader {:X} failed to decompile\n", hash), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
+					shared::common::log("shader", std::format("Shader {:08X} failed to decompile\n", hash), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
 				}
 			}
 
@@ -187,28 +199,7 @@ namespace shared::common
 				{
 					if (data_dump)
 					{
-						char fname[64];
-						snprintf(fname, sizeof(fname), "shaders\\ps_%x.txt", hash);
-						FILE* f;
-						if ((f = fopen(fname, "r"))) {
-							fclose(f);
-						}
-						else
-						{
-							f = fopen(fname, "wb");
-							if (f)
-							{
-								int retry = 3;
-								while (1 != fwrite(decompbuf->GetBufferPointer(), decompbuf->GetBufferSize(), 1, f))
-								{
-									retry--;
-									if (retry <= 0) break;
-								}
-								fclose(f);
-							}
-							else
-								shared::common::log("shader", std::format("Cannot open file for dumps {:s}", fname), shared::common::LOG_TYPE::LOG_TYPE_WARN, true);
-						}
+						write_shader("ps", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
 					}
 					if (decomp)
 					{
@@ -218,7 +209,7 @@ namespace shared::common
 				}
 				else
 				{
-					shared::common::log("shader", std::format("Shader {:X} failed to decompile\n", hash), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
+					shared::common::log("shader", std::format("Shader {:08X} failed to decompile\n", hash), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
 				}
 			}
 
@@ -227,6 +218,7 @@ namespace shared::common
 
 		enum EShaderType
 		{
+			SHADER_NEW,
 			SHADER_UNKNOWN,
 			SHADER_GEO,
 			SHADER_MODEL,
@@ -236,33 +228,66 @@ namespace shared::common
 			SHADER_UI
 		};
 
-		// check if shader is whitelisted
-		EShaderType is_shader_whitelisted(IDirect3DVertexShader9* shader)
+		struct SShaderClasify
 		{
-			EShaderType type = SHADER_UNKNOWN;
+			EShaderType type;
+			int albedoStage;
+			SShaderClasify() : type(SHADER_NEW), albedoStage(0) {}
+		};
 
-			const uint32_t hash = get_shader_hash(shader);
-			if (hash)
+		const char* get_shader_type_str(EShaderType type)
+		{
+			switch (type)
 			{
-				if (shader_whitelist_.contains(hash))
-					type = shader_whitelist_[hash];
-
+			case SHADER_NEW:
+				return "NEW";
+			case SHADER_UNKNOWN:
+				return "UNKNOWN";
+			case SHADER_GEO:
+				return "GEO";
+			case SHADER_MODEL:
+				return "MODEL";
+			case SHADER_SKINNING:
+				return "SKINNING";
+			case SHADER_IGNORE:
+				return "IGNORE";
+			case SHADER_LIGHT:
+				return "LIGHT";
+			case SHADER_UI:
+				return "UI";
 			}
-			return type;
+			return "SHADER_UNKNOWN";
 		}
 
-		EShaderType is_shader_whitelisted(IDirect3DPixelShader9* shader)
+		// check if shader is whitelisted
+		bool is_shader_whitelisted(IDirect3DVertexShader9* shader, SShaderClasify& info)
 		{
-			EShaderType type = SHADER_UNKNOWN;
-
 			const uint32_t hash = get_shader_hash(shader);
 			if (hash)
 			{
 				if (shader_whitelist_.contains(hash))
-					type = shader_whitelist_[hash];
+				{
+					info = shader_whitelist_[hash];
+					return true;
+				}
 
 			}
-			return type;
+			return false;
+		}
+
+		bool is_shader_whitelisted(IDirect3DPixelShader9* shader, SShaderClasify& info)
+		{
+			const uint32_t hash = get_shader_hash(shader);
+			if (hash)
+			{
+				if (shader_whitelist_.contains(hash))
+				{
+					info = shader_whitelist_[hash];
+					return true;
+				}
+
+			}
+			return false;
 		}
 
 		// clear cache
@@ -271,13 +296,14 @@ namespace shared::common
 		}
 
 		// add hash to whitelist
-		void add_to_whitelist(uint32_t hash, EShaderType type) {
-			shader_whitelist_[hash] = type;
+		void add_to_whitelist(uint32_t hash, SShaderClasify& info) {
+			shader_whitelist_[hash] = info;
+			shared::common::log("shader", std::format("Shader {:08X} marked as {:s}", hash, get_shader_type_str(info.type)), shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
 		}
 
 	private:
 		std::unordered_map<void*, uint32_t> shader_hash_cache_;
-		std::unordered_map<uint32_t, EShaderType> shader_whitelist_ = {};
+		std::unordered_map<uint32_t, SShaderClasify> shader_whitelist_ = {};
 	};
 
 	// global instance

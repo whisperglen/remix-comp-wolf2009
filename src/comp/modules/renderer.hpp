@@ -281,10 +281,12 @@ namespace comp
 		struct modifiers_s
 		{
 			bool do_not_render = false;
+			bool do_gpu_skinning = false;
 
 			void reset()
 			{
 				do_not_render = false;
+				do_gpu_skinning = false;
 			}
 		};
 
@@ -360,8 +362,13 @@ namespace comp
 			return false;
 		}
 
+		static void prepare_structs();
+
 		void manually_trigger_remix_injection(IDirect3DDevice9* dev);
+
 		bool prepare_drawcall(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
+		void prepare_ff_texture_stages(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
+		void process_gpu_skinning(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
 
 		void on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* pDecl);
 		void on_set_vertex_shader(IDirect3DDevice9* dev, IDirect3DVertexShader9* pShader);

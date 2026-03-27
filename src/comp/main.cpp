@@ -10,7 +10,7 @@ namespace comp
 	std::unordered_set<HWND> wnd_class_list;
 
 	// #Step 1: Start the game and copy the class name from the console window and put it in here:
-	#define WINDOW_CLASS_NAME "YOUR_WINDOW_CLASS_NAME" // Eg: "GameFrame"
+	#define WINDOW_CLASS_NAME "Wolf2" // Eg: "GameFrame"
 
 	BOOL CALLBACK enum_windows_proc(HWND hwnd, LPARAM lParam)
 	{
@@ -81,15 +81,16 @@ BOOL APIENTRY DllMain(HMODULE hmodule, const DWORD ul_reason_for_call, LPVOID)
 		shared::globals::setup_exe_module();
 		shared::globals::setup_homepath();
 
-		shared::common::set_console_color_blue(true);
+		shared::common::set_console_color_green(true);
 		std::cout << "Launching RTX Remix Compatiblity Base Version [" << COMP_MOD_VERSION_MAJOR << "." << COMP_MOD_VERSION_MINOR << "." << COMP_MOD_VERSION_PATCH << "]\n";
 		std::cout << "> Compiled On : " + std::string(__DATE__) + " " + std::string(__TIME__) + "\n";
-		std::cout << "> https://github.com/xoxor4d/remix-comp-base\n\n";
+		std::cout << "> https://github.com/whisperglen/remix-comp-wolf2009\n\n";
 		shared::common::set_console_color_default();
 
 		if (const auto MH_INIT_STATUS = MH_Initialize(); MH_INIT_STATUS != MH_STATUS::MH_OK)
 		{
-			shared::common::log("Main", std::format("MinHook failed to initialize with code: {:d}", static_cast<int>(MH_INIT_STATUS)), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
+			shared::common::log("Main", std::format("MinHook failed to initialize with code: {:d}", static_cast<int>(MH_INIT_STATUS)),
+				shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
 			return TRUE;
 		}
 

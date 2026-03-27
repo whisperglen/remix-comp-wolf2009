@@ -35,6 +35,20 @@ namespace shared::common
 		return false;
 	}
 
+	int flags::get_config(const std::string& flag, int defval)
+	{
+		int ret = defval;
+		if (iniconf.has("Config"))
+		{
+			if (iniconf["Config"].has(flag))
+			{
+				ret = strtol(iniconf["Config"].get(flag).c_str(), nullptr, 10);
+			}
+		}
+
+		return ret;
+	}
+
 	bool flags::is_shader_ignored(uint32_t hash)
 	{
 		get().parse_flags();

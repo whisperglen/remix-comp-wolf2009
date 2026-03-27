@@ -55,6 +55,75 @@ namespace comp
 		return ctx;
 	}
 
+	void renderer::process_gpu_skinning(IDirect3DDevice9* dev, drawcall_mod_context& ctx)
+	{
+		handle_mats_inversion();
+
+		dev->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, 1);
+		dev->SetRenderState(D3DRS_VERTEXBLEND, gstate.weights);
+
+		const int NUM_BONES = 75;
+		const int BONE_MAT_SZ = 4 * 3;
+		D3DXMATRIX bone, bone2v;
+		bone2v._14 = 0;
+		bone2v._24 = 0;
+		bone2v._34 = 0;
+		bone2v._44 = 1;
+		float* src = &gstate.vs_contants[0][0];
+		float* mat = &bone2v.m[0][0];
+		for (int i = 0; i < NUM_BONES; i++, src += BONE_MAT_SZ)
+		{
+			mat[0] = src[0]; mat[1] = src[4]; mat[2] = src[8];
+			mat[4] = src[1]; mat[5] = src[5]; mat[6] = src[9];
+			mat[8] = src[2]; mat[9] = src[6]; mat[10] = src[10];
+			mat[12] = src[3]; mat[13] = src[7]; mat[14] = src[11];
+
+			D3DXMatrixMultiply(&bone, &bone2v, &gstate.view_inv);
+			dev->SetTransform(D3DTS_WORLDMATRIX(i), &bone);
+		}
+	}
+
+	void renderer::prepare_ff_texture_stages(IDirect3DDevice9* dev, drawcall_mod_context& ctx)
+	{
+		/* Alpha test: the game's pixel shader handled alpha discard; without a PS,
+		 * FFP needs the render state so Remix classifies cutout materials correctly. */
+		{
+			dev->SetRenderState(D3DRS_ALPHATESTENABLE, 1);
+			dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
+			dev->SetRenderState(D3DRS_ALPHAREF, gstate.alphaRef);
+		}
+
+		/*
+		 * Setup texture stages for FFP mode.
+		 * Stage 0: modulate texture color with vertex/material diffuse.
+		 * Stage 1+: disabled.
+		 */
+		dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+		dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_CURRENT);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+		dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, gstate.albedoStage);
+		dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, 0);
+
+		if (gstate.albedoStage)
+		{
+			IDirect3DBaseTexture9* tex;
+			dev->GetTexture(gstate.albedoStage, &tex);
+			dev->SetTexture(0, tex);
+		}
+
+		/* Disable stages 1-7: the game binds shadow maps, LUTs, normal maps etc.
+		 * on higher stages for its pixel shaders. In FFP mode those stages become
+		 * active and Remix may consume the wrong textures. */
+		for (int i = 1; i < 8; i++) {
+			dev->SetTextureStageState(i, D3DTSS_COLOROP, D3DTOP_DISABLE);
+			dev->SetTextureStageState(i, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+			dev->SetTexture(i, nullptr);
+		}
+	}
+
 	bool renderer::prepare_drawcall(IDirect3DDevice9* dev, drawcall_mod_context& ctx)
 	{
 		using shared::common::ShaderCache;
@@ -135,34 +204,13 @@ namespace comp
 		{
 			ctx.modifiers.do_not_render = true;
 		}
-		else if (gstate.vs_type == ShaderCache::SHADER_SKINNING)
+		else if (gstate.vs_type == ShaderCache::SHADER_SKINNING && gstate.declHasSkinning)
 		{
-			//ctx.modifiers.do_not_render = true;
-		}
+			dev->SetTransform(D3DTS_PROJECTION, &gstate.proj);
+			dev->SetTransform(D3DTS_VIEW, &gstate.view);
 
-		if (with_ff)
-		{
-			/*
-			 * Setup texture stages for FFP mode.
-			 * Stage 0: modulate texture color with vertex/material diffuse.
-			 * Stage 1+: disabled.
-			 */
-			dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-			dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-			dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_CURRENT);
-			dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
-			dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-			dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
-			dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
-			dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, 0);
-
-			/* Disable stages 1-7: the game binds shadow maps, LUTs, normal maps etc.
-			 * on higher stages for its pixel shaders. In FFP mode those stages become
-			 * active and Remix may consume the wrong textures. */
-			for (int i = 1; i < 8; i++) {
-				dev->SetTextureStageState(i, D3DTSS_COLOROP, D3DTOP_DISABLE);
-				dev->SetTextureStageState(i, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-			}
+			ctx.modifiers.do_gpu_skinning = true;
+			with_ff = true;
 		}
 
 		return with_ff;
@@ -173,6 +221,7 @@ namespace comp
 	void renderer::on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* pDecl)
 	{
 		BOOL foundSkinning = FALSE;
+		D3DVERTEXBLENDFLAGS numWeights = D3DVBF_DISABLE;
 		D3DVERTEXELEMENT9 decinfo[10];
 		UINT num = 0;
 		pDecl->GetDeclaration(nullptr, &num);
@@ -181,9 +230,37 @@ namespace comp
 			pDecl->GetDeclaration(decinfo, &num);
 			for (UINT i = 0; i < num; i++)
 			{
-				if (decinfo[i].Usage == D3DDECLUSAGE_BLENDINDICES || decinfo[i].Usage == D3DDECLUSAGE_BLENDWEIGHT)
+				if (decinfo[i].Usage == D3DDECLUSAGE_BLENDINDICES && !foundSkinning)
+				{
+					//sometimes we only have blendindices
+					numWeights = D3DVBF_0WEIGHTS;
+					foundSkinning = TRUE;
+				}
+				if (decinfo[i].Usage == D3DDECLUSAGE_BLENDWEIGHT)
 				{
 					foundSkinning = TRUE;
+
+					//this should tell us how many weights we have
+					switch (decinfo[i].Type)
+					{
+					case D3DDECLTYPE_FLOAT4:
+						numWeights = D3DVBF_DISABLE;
+						foundSkinning = FALSE;
+						break;
+					case D3DDECLTYPE_FLOAT3:
+						numWeights = D3DVBF_3WEIGHTS;
+						break;
+					case D3DDECLTYPE_FLOAT2:
+						numWeights = D3DVBF_2WEIGHTS;
+						break;
+					case D3DDECLTYPE_FLOAT1:
+						numWeights = D3DVBF_1WEIGHTS;
+						break;
+					default:
+						numWeights = D3DVBF_DISABLE;
+						foundSkinning = FALSE;
+						break;
+					}
 					break;
 				}
 			}
@@ -193,7 +270,8 @@ namespace comp
 			shared::common::log("d3d9", std::format("VertexDeclaration needs more space {:d}", num), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
 		}
 
-		gstate.renderSkinning = foundSkinning;
+		gstate.declHasSkinning = foundSkinning;
+		gstate.weights = numWeights;
 	}
 
 	void renderer::on_set_vertex_shader(IDirect3DDevice9* dev, IDirect3DVertexShader9* pShader)
@@ -201,8 +279,8 @@ namespace comp
 		using namespace shared::common;
 		using namespace comp::game;
 
-		ShaderCache::EShaderType type = shaders.is_shader_whitelisted(pShader);
-		if (ShaderCache::SHADER_UNKNOWN == type)
+		ShaderCache::SShaderClasify info;
+		if(!shaders.is_shader_whitelisted(pShader, info))
 		{
 			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
 			std::string decomp;
@@ -211,47 +289,50 @@ namespace comp
 			if (decomp.contains("$mSkinToViewTransforms"))
 			{
 				//skinning c0, 75 x vec4
-				type = ShaderCache::SHADER_SKINNING;
+				info.type = ShaderCache::SHADER_SKINNING;
 			}
 			else if (decomp.contains("$mModelViewProjection"))
 			{
 				//geo c0, 4 x vec4
-				type = ShaderCache::SHADER_GEO;
-				if (0 && shared::common::flags::is_shader_ignored(hash))
+				info.type = ShaderCache::SHADER_GEO;
+				if (shared::common::flags::is_shader_ignored(hash))
 				{
-					type = ShaderCache::SHADER_IGNORE;
+					info.type = ShaderCache::SHADER_IGNORE;
 				}
 				else if (decomp.contains("$vSrcWidthHeight"))
 				{
-					type = ShaderCache::SHADER_IGNORE;
+					info.type = ShaderCache::SHADER_IGNORE;
+				}
+				else if (decomp.contains("$fDeformMagnitude") && decomp.contains("$vWScale"))
+				{
+					//blue fumes
+					info.albedoStage = 3;
 				}
 				else if (decomp.contains("$vWScale"))
 				{
 					//light shader, we need stuff from pixel shader
-					type = ShaderCache::SHADER_LIGHT;
+					info.type = ShaderCache::SHADER_LIGHT;
 				}
 				else if (decomp.contains("$mModelView"))
 				{
 					//geo c4, 3 x vec4
-					type = ShaderCache::SHADER_MODEL;
+					//info.type = ShaderCache::SHADER_MODEL;
 				}
 			}
 			else if (decomp.contains("vs_1_1") && decomp.contains("mov oPos.zw, v0.zwww"))
 			{
-				type = ShaderCache::SHADER_UI;
+				info.type = ShaderCache::SHADER_UI;
 			}
 			else
 			{
-				type = ShaderCache::SHADER_IGNORE;
+				info.type = ShaderCache::SHADER_IGNORE;
 			}
 
-			gstate.vs_type = type;
-			shaders.add_to_whitelist(hash, type);
+			shaders.add_to_whitelist(hash, info);
 		}
-		else
-		{
-			gstate.vs_type = type;
-		}
+
+		gstate.vs_type = info.type;
+		gstate.albedoStage = info.albedoStage;
 	}
 
 	void renderer::on_set_pixel_shader(IDirect3DDevice9* dev, IDirect3DPixelShader9* pShader)
@@ -260,8 +341,8 @@ namespace comp
 		using namespace shared::common;
 		using namespace comp::game;
 
-		ShaderCache::EShaderType type = shaders.is_shader_whitelisted(pShader);
-		if (ShaderCache::SHADER_UNKNOWN == type)
+		ShaderCache::SShaderClasify info;
+		if(!shaders.is_shader_whitelisted(pShader, info))
 		{
 			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
 			std::string decomp;
@@ -269,28 +350,29 @@ namespace comp
 
 			if (shared::common::flags::is_shader_ignored(hash))
 			{
-				type = ShaderCache::SHADER_IGNORE;
+				info.type = ShaderCache::SHADER_IGNORE;
 			}
 			else if (decomp.contains("$fDesaturationAmount") || decomp.contains("$vKernelWeights") || decomp.contains("GBufferDiffuse"))
 			{
-				type = ShaderCache::SHADER_IGNORE;
+				info.type = ShaderCache::SHADER_IGNORE;
 			}
 			else if (decomp.contains("$vBoundingSphereCenterRadiusSqrd") || decomp.contains("$vViewLightPosition"))
 			{
-				type = ShaderCache::SHADER_LIGHT;
+				info.type = ShaderCache::SHADER_LIGHT;
 			}
 			else if (decomp.contains("ps_1_1") && decomp.contains("mad r0, r0, c2, c3"))
 			{
-				type = ShaderCache::SHADER_UI;
+				info.type = ShaderCache::SHADER_UI;
+			}
+			else
+			{
+				info.type = ShaderCache::SHADER_UNKNOWN;
 			}
 
-			gstate.ps_type = type;
-			shaders.add_to_whitelist(hash, type);
+			shaders.add_to_whitelist(hash, info);
 		}
-		else
-		{
-			gstate.ps_type = type;
-		}
+
+		gstate.ps_type = info.type;
 	}
 
 	HRESULT renderer::on_draw_primitive(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const UINT& StartVertex, const UINT& PrimitiveCount)
@@ -322,7 +404,14 @@ namespace comp
 		if (render_with_ff)
 		{
 			ctx.save_vs(dev);
-			dev->SetVertexShader(nullptr);
+			//dev->SetVertexShader(nullptr);
+			ctx.save_ps(dev);
+			//dev->SetPixelShader(nullptr);
+
+			prepare_ff_texture_stages(dev, ctx);
+
+			if(ctx.modifiers.do_gpu_skinning)
+				process_gpu_skinning(dev, ctx);
 		}
 
 
@@ -354,7 +443,11 @@ namespace comp
 
 		// ---------
 		// post draw
-
+		if (render_with_ff && ctx.modifiers.do_gpu_skinning)
+		{
+			dev->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, 0);
+			dev->SetRenderState(D3DRS_VERTEXBLEND, D3DVBF_DISABLE);
+		}
 		ctx.restore_all(dev);
 		ctx.reset_context();
 
@@ -462,7 +555,14 @@ namespace comp
 			if (render_with_ff)
 			{
 				ctx.save_vs(dev);
-				dev->SetVertexShader(nullptr);
+				//dev->SetVertexShader(nullptr);
+				ctx.save_ps(dev);
+				//dev->SetPixelShader(nullptr);
+
+				prepare_ff_texture_stages(dev, ctx);
+
+				if (ctx.modifiers.do_gpu_skinning)
+					process_gpu_skinning(dev, ctx);
 			}
 		} // end !imgui-is-rendering
 
@@ -489,7 +589,11 @@ namespace comp
 
 		// ---------
 		// post draw
-
+		if (render_with_ff && ctx.modifiers.do_gpu_skinning)
+		{
+			dev->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, 0);
+			dev->SetRenderState(D3DRS_VERTEXBLEND, D3DVBF_DISABLE);
+		}
 		ctx.restore_all(dev);
 		ctx.reset_context();
 		
@@ -617,6 +721,16 @@ namespace comp
 		tex_addons::init_texture_addons(true);
 	}
 
+	void renderer::prepare_structs()
+	{
+		memset(&gstate, 0, sizeof(gstate));
+		D3DXMatrixIdentity(&gstate.proj);
+		D3DXMatrixIdentity(&gstate.view);
+		D3DXMatrixIdentity(&gstate.proj_inv);
+		D3DXMatrixIdentity(&gstate.view_inv);
+		//gstate.albedoStage = shared::common::flags::get_config("AlbedoStage", 0);
+		gstate.alphaRef = shared::common::flags::get_config("AlphaRef", 128);
+	}
 
 	void handle_mats_inversion()
 	{

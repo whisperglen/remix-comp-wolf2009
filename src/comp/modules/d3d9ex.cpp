@@ -211,12 +211,35 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetRenderTarget(DWORD RenderTargetIndex, IDirect3DSurface9* pRenderTarget)
 	{
+#if 0
+		HRESULT ret = D3DERR_INVALIDCALL;
+		if (RenderTargetIndex >= 0 && RenderTargetIndex < ARRAYSIZE(gstate.renderTargets))
+		{
+			gstate.renderTargets[RenderTargetIndex] = (void*)pRenderTarget;
+			ret = D3D_OK;
+		}
+
+		return ret;
+#else
 		return m_pIDirect3DDevice9->SetRenderTarget(RenderTargetIndex, pRenderTarget);
+#endif
 	}
 
 	HRESULT d3d9ex::D3D9Device::GetRenderTarget(DWORD RenderTargetIndex, IDirect3DSurface9** ppRenderTarget)
 	{
+#if 0
+		HRESULT ret = D3DERR_INVALIDCALL;
+		if (RenderTargetIndex >= 0 && RenderTargetIndex < ARRAYSIZE(gstate.renderTargets) && ppRenderTarget)
+		{
+			void** dest = (void**)ppRenderTarget;
+			*dest = gstate.renderTargets[RenderTargetIndex];
+			ret = D3D_OK;
+		}
+
+		return ret;
+#else
 		return m_pIDirect3DDevice9->GetRenderTarget(RenderTargetIndex, ppRenderTarget);
+#endif
 	}
 
 	HRESULT d3d9ex::D3D9Device::SetDepthStencilSurface(IDirect3DSurface9* pNewZStencil)
