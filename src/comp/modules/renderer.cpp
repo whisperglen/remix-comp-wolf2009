@@ -5,9 +5,8 @@
 
 namespace comp
 {
-	int g_is_rendering_something = 0;
 	bool g_rendered_first_primitive = false;
-	bool g_applied_hud_hack = false; // was hud "injection" applied this frame
+	int g_is_rendering_something = 0;
 
 	namespace tex_addons
 	{
@@ -264,10 +263,6 @@ namespace comp
 
 	void renderer::manually_trigger_remix_injection(IDirect3DDevice9* dev)
 	{
-		//if (!game::is_in_game) {
-		//	return;
-		//}
-
 		if (!m_triggered_remix_injection)
 		{
 			auto& ctx = dc_ctx;

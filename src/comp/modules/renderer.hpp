@@ -2,11 +2,7 @@
 
 namespace comp
 {
-	extern int g_is_rendering_something;
-
 	extern bool g_rendered_first_primitive;
-	extern bool g_applied_hud_hack;
-	extern bool g_applied_phone_hack;
 
 	namespace tex_addons
 	{

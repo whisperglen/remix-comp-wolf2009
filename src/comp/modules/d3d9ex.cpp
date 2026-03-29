@@ -909,7 +909,10 @@ namespace comp
 		// Detour remix' Direct3DCreate9 detour :p
 		// We end up with GameD3D -> OurD3D -> BridgeD3D -> Runtime
 		const auto addr = (DWORD)GetProcAddress(GetModuleHandle(L"d3d9.dll"), "Direct3DCreate9");
-;
+
+		// Idea: this project could also act as a d3d9.dll, which gets loaded by the game automatically -> no asiloader required.
+		// To load remix, the project would then need to load a renamed remix bridge dll (eg. "d3d9_remix.dll") 
+
 		const auto status = MH_CreateHook((LPVOID)addr, &d3d9ex::HookedDirect3DCreate9, (LPVOID*)&Direct3DCreate9_original);
 		MH_EnableHook(MH_ALL_HOOKS);
 
