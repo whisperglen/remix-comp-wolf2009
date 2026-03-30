@@ -10,10 +10,13 @@ namespace comp::game
 	{
 		D3DXMATRIX view;
 		D3DXMATRIX proj;
-		bool view_inv_dirty;
 		D3DXMATRIX view_inv;
-		bool proj_inv_dirty;
 		D3DXMATRIX proj_inv;
+		bool view_inv_dirty;
+		bool proj_inv_dirty;
+
+		unsigned int drawcallCount;
+		unsigned int drawcallLimit;
 
 		bool hasMV;
 		int vs_type;
@@ -22,10 +25,20 @@ namespace comp::game
 		int alphaRef;
 
 		bool declHasSkinning;
-		D3DVERTEXBLENDFLAGS weights;
+		bool skin_replace0w;
+		D3DVERTEXBLENDFLAGS skinWeights;
+		int skinIndices_offset;
+		int skinWeights_offset;
+		int skinWeight_streamNum;
+		bool skinWeight_replace0w;
+
+		bool dontDrawUntextured;
+		int numTextures;
+
+		bool skyHasRendered;
 
 		void* renderTargets[10];
-		float vs_contants[256][4];
-		float ps_contants[256][4];
+		float vs_constants[256][4];
+		float ps_constants[256][4];
 	};
 }

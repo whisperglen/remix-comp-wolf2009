@@ -281,12 +281,12 @@ namespace comp
 		struct modifiers_s
 		{
 			bool do_not_render = false;
-			bool do_gpu_skinning = false;
+			int do_gpu_skinning = 0;
 
 			void reset()
 			{
 				do_not_render = false;
-				do_gpu_skinning = false;
+				do_gpu_skinning = 0;
 			}
 		};
 
@@ -366,15 +366,18 @@ namespace comp
 
 		void manually_trigger_remix_injection(IDirect3DDevice9* dev);
 
+		void set_transforms_mvp(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
+		void set_transforms_mv(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
 		bool prepare_drawcall(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
 		void prepare_ff_texture_stages(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
-		void process_gpu_skinning(IDirect3DDevice9* dev, drawcall_mod_context& ctx);
+		void process_gpu_skinning(IDirect3DDevice9* dev, drawcall_mod_context& ctx, const INT BaseVertexIndex, const UINT MinVertexIndex, const UINT NumVertices);
 
-		void on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* pDecl);
+		void on_vertex_declaration(IDirect3DDevice9* dev, IDirect3DVertexDeclaration9* &pDecl);
 		void on_set_vertex_shader(IDirect3DDevice9* dev, IDirect3DVertexShader9* pShader);
 		void on_set_pixel_shader(IDirect3DDevice9* dev, IDirect3DPixelShader9* pShader);
 		HRESULT on_draw_primitive(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const UINT& StartVertex, const UINT& PrimitiveCount);
 		HRESULT on_draw_indexed_prim(IDirect3DDevice9* dev, const D3DPRIMITIVETYPE& PrimitiveType, const INT& BaseVertexIndex, const UINT& MinVertexIndex, const UINT& NumVertices, const UINT& startIndex, const UINT& primCount);
+		void on_present(IDirect3DDevice9* dev);
 
 		bool m_triggered_remix_injection = false;
 		bool m_modified_draw_prim = false;

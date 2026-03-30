@@ -78,7 +78,7 @@ namespace shared::common
 			return hash;
 		}
 
-		void write_shader(const char *prefix, uint32_t hash, const void *data, size_t sz)
+		void write_shader_to_file(const char *prefix, uint32_t hash, const void *data, size_t sz)
 		{
 			char fname[64];
 			snprintf(fname, sizeof(fname), "shaders\\%s_%x.txt", prefix, hash);
@@ -146,7 +146,7 @@ namespace shared::common
 				{
 					if (data_dump)
 					{
-						write_shader("vs", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
+						write_shader_to_file("vs", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
 					}
 					if (decomp)
 					{
@@ -199,7 +199,7 @@ namespace shared::common
 				{
 					if (data_dump)
 					{
-						write_shader("ps", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
+						write_shader_to_file("ps", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
 					}
 					if (decomp)
 					{
@@ -223,15 +223,18 @@ namespace shared::common
 			SHADER_GEO,
 			SHADER_MODEL,
 			SHADER_SKINNING,
+			SHADER_SKINNING_2,
 			SHADER_IGNORE,
 			SHADER_LIGHT,
-			SHADER_UI
+			SHADER_UI,
+			SHADER_UI_FF,
+			SHADER_SKY
 		};
 
 		struct SShaderClasify
 		{
-			EShaderType type;
-			int albedoStage;
+			uint8_t type;
+			uint8_t albedoStage;
 			SShaderClasify() : type(SHADER_NEW), albedoStage(0) {}
 		};
 
@@ -249,25 +252,31 @@ namespace shared::common
 				return "MODEL";
 			case SHADER_SKINNING:
 				return "SKINNING";
+			case SHADER_SKINNING_2:
+				return "SKINNING_2";
 			case SHADER_IGNORE:
 				return "IGNORE";
 			case SHADER_LIGHT:
 				return "LIGHT";
 			case SHADER_UI:
 				return "UI";
+			case SHADER_UI_FF:
+				return "UI_FF";
+			case SHADER_SKY:
+				return "SKY";
 			}
-			return "SHADER_UNKNOWN";
+			return "__FAIL__";
 		}
 
 		// check if shader is whitelisted
-		bool is_shader_whitelisted(IDirect3DVertexShader9* shader, SShaderClasify& info)
+		bool is_shader_info_cached(IDirect3DVertexShader9* shader, SShaderClasify& info)
 		{
 			const uint32_t hash = get_shader_hash(shader);
 			if (hash)
 			{
-				if (shader_whitelist_.contains(hash))
+				if (shader_storage_.contains(hash))
 				{
-					info = shader_whitelist_[hash];
+					info = shader_storage_[hash];
 					return true;
 				}
 
@@ -275,14 +284,14 @@ namespace shared::common
 			return false;
 		}
 
-		bool is_shader_whitelisted(IDirect3DPixelShader9* shader, SShaderClasify& info)
+		bool is_shader_info_cached(IDirect3DPixelShader9* shader, SShaderClasify& info)
 		{
 			const uint32_t hash = get_shader_hash(shader);
 			if (hash)
 			{
-				if (shader_whitelist_.contains(hash))
+				if (shader_storage_.contains(hash))
 				{
-					info = shader_whitelist_[hash];
+					info = shader_storage_[hash];
 					return true;
 				}
 
@@ -296,14 +305,14 @@ namespace shared::common
 		}
 
 		// add hash to whitelist
-		void add_to_whitelist(uint32_t hash, SShaderClasify& info) {
-			shader_whitelist_[hash] = info;
-			shared::common::log("shader", std::format("Shader {:08X} marked as {:s}", hash, get_shader_type_str(info.type)), shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
+		void add_to_cache(uint32_t hash, SShaderClasify& info) {
+			shader_storage_[hash] = info;
+			shared::common::log("shader", std::format("Shader {:08X} marked as {:s}", hash, get_shader_type_str(EShaderType(info.type))), shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
 		}
 
 	private:
 		std::unordered_map<void*, uint32_t> shader_hash_cache_;
-		std::unordered_map<uint32_t, SShaderClasify> shader_whitelist_ = {};
+		std::unordered_map<uint32_t, SShaderClasify> shader_storage_ = {};
 	};
 
 	// global instance

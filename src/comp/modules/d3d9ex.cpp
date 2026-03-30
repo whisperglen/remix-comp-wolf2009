@@ -111,6 +111,11 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 	{
+		if (renderer::is_initialized())
+		{
+			renderer::get()->on_present(m_pIDirect3DDevice9);
+		}
+
 		return m_pIDirect3DDevice9->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 	}
 
@@ -555,7 +560,7 @@ namespace comp
 	{
 		if (StartRegister < 256)
 		{
-			memcpy(&gstate.vs_contants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
+			memcpy(&gstate.vs_constants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
 		}
 		return m_pIDirect3DDevice9->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
@@ -640,7 +645,7 @@ namespace comp
 	{
 		if (StartRegister < 256)
 		{
-			memcpy(&gstate.ps_contants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
+			memcpy(&gstate.ps_constants[StartRegister][0], pConstantData, Vector4fCount * 4 * sizeof(float));
 		}
 		return m_pIDirect3DDevice9->SetPixelShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
