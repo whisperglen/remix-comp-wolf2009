@@ -982,7 +982,9 @@ namespace comp
 		D3DXMatrixIdentity(&gstate.view_inv);
 		//gstate.albedoStage = shared::common::flags::get_config("AlbedoStage", 0);
 		gstate.alphaRef = shared::common::flags::get_config("AlphaRef", 128);
-		gstate.drawcallLimit = 0;
+		gstate.drawcallLimit = shared::common::flags::get_config("DrawcallLimit", 0);
+		gstate.skin_replace0w = shared::common::flags::has_flag("skins_replace_0WEIGHT");
+		gstate.dontDrawUntextured = shared::common::flags::has_flag("skip_untextured_draws");
 	}
 
 	void handle_mats_inversion()

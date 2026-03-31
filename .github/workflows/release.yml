@@ -1,0 +1,97 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: CreateRelease
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: ./build/remix-comp-base.sln
+
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  #BUILD_CONFIGURATION: Release
+  
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  create_release:
+    name: Create release
+    runs-on: windows-2022
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Create release
+        id: create_release
+        uses: comnoco/create-release-action@v2.0.5
+        with:
+          draft: false
+          prerelease: false
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref_name }}
+
+  build:
+    needs: create_release
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        config: [Release, Debug]
+        platform: [Win32]
+        include:
+          - zip_name: Wolf2009.zip
+            bin_name: Release
+            config: Release
+            platform: Win32
+          - zip_name: Wolf2009_Debug.zip
+            bin_name: Debug
+            config: Debug
+            platform: Win32
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.1.3
+
+    - name: Restore NuGet packages
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        ./generate-buildfiles_vs22.bat
+        nuget restore ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      # Add additional options to the MSBuild command line here (like platform or verbosity level).
+      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
+      run: |
+        generate-buildfiles_vs22.bat
+        msbuild /m /p:Configuration=${{matrix.config}} /p:Platform=${{matrix.platform}} ${{env.SOLUTION_FILE_PATH}}
+        XCOPY /E /I /Y .\assets\ .\build\bin\${{matrix.bin_name}}\
+
+    - name: Create artifact
+      run: 7z a -tzip ./build/bin/${{matrix.zip_name}} ./build/bin/${{matrix.bin_name}}/*
+
+    - name: Upload artifact
+      uses: actions/github-script@v4
+      with:
+        script: |
+          const fs = require('fs');
+          // Upload the release asset
+          await github.repos.uploadReleaseAsset({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ needs.create_release.outputs.id }},
+            name: "./build/bin/${{matrix.zip_name}}",
+            data: await fs.readFileSync("./build/bin/${{matrix.zip_name}}")
+          });
