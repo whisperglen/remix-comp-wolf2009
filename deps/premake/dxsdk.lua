@@ -23,6 +23,9 @@ end
 function dxsdk.project()
     project "dxsdk"
 		language "C++"
+    
+		targetdir "%{prj.location}\\bin\\$(ProjectName)\\$(Configuration)"
+		objdir "%{prj.location}\\obj"
 
 		dxsdk.includes()
 

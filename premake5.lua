@@ -34,43 +34,37 @@ workspace "remix-comp-base"
 
 	startproject "remix-comp-base"
 	location "./build"
-	objdir "%{wks.location}/obj"
-	targetdir "%{wks.location}/bin/%{cfg.buildcfg}"
+	objdir "%{wks.location}\\obj"
+	targetdir "%{wks.location}\\bin\\$(Configuration)"
 	
-    configurations { 
-        "Debug", 
-        "Release",
-    }
+  configurations { 
+      "Debug", 
+      "Release",
+  }
 
 	platforms "Win32"
 	architecture "x86"
 
 	cppdialect "C++20"
 	systemversion "latest"
-    symbols "On"
-    staticruntime "On"
+  symbols "On"
+  staticruntime "On"
 
-    disablewarnings {
-		"4239",
-		"4369",
+  disablewarnings {
+		"4100",
 		"4505",
-		"4996",
-		"5311",
-		"6001",
-		"6385",
-		"6386",
 		"26812"
 	}
 
-    defines { 
-        "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS" 
-    }
+  defines { 
+      "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS" 
+  }
 
-    filter "platforms:Win*"
-		defines {
-			"_WINDOWS", 
-			"WIN32"
-		}
+  filter "platforms:Win*"
+    defines {
+      "_WINDOWS", 
+      "WIN32"
+    }
 	filter {}
 
 	-- Release
@@ -89,8 +83,7 @@ workspace "remix-comp-base"
 		flags { 
             "MultiProcessorCompile", 
             "LinkTimeOptimization", 
-            "No64BitChecks",
-			"FatalCompileWarnings"
+            "No64BitChecks"
         }
 	filter {}
 
@@ -117,8 +110,8 @@ workspace "remix-comp-base"
 		kind "StaticLib"
 		language "C++"
 
-		targetdir "bin/%{cfg.buildcfg}"
-		objdir "obj/%{cfg.buildcfg}"
+		targetdir "%{prj.location}\\bin\\$(ProjectName)\\$(Configuration)"
+		objdir "%{prj.location}\\obj"
 		
 		pchheader "std_include.hpp"
 		pchsource "src/shared/std_include.cpp"
@@ -131,15 +124,17 @@ workspace "remix-comp-base"
 		includedirs {
 			"%{prj.location}/src",
 			"./src",
+			"./src/comp",
+			"./deps",
 		}
 
 		resincludedirs {
 			"$(ProjectDir)src"
 		}
 
-        buildoptions { 
-            "/Zm100 -Zm100" 
-        }
+    buildoptions { 
+        "/Zm100 -Zm100" 
+    }
 
         -- Specific configurations
 		flags { 
@@ -174,6 +169,8 @@ workspace "remix-comp-base"
 	includedirs {
 		"%{prj.location}/src",
 		"./src",
+		"./src/comp",
+		"./deps",
 	}
 
 	links {

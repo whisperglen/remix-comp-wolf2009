@@ -16,6 +16,9 @@ end
 function imgui.project()
 	project "imgui"
 		language "C++"
+    
+		targetdir "%{prj.location}\\bin\\$(ProjectName)\\$(Configuration)"
+		objdir "%{prj.location}\\obj"
 
 		imgui.includes()
 

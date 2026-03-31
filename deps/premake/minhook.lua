@@ -17,6 +17,9 @@ end
 function minhook.project()
 	project "minhook"
 		language "C"
+    
+		targetdir "%{prj.location}\\bin\\$(ProjectName)\\$(Configuration)"
+		objdir "%{prj.location}\\obj"
 
 		minhook.includes()
 		files

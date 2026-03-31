@@ -16,6 +16,9 @@ end
 function bridge_api.project()
 	project "bridge_api"
 		language "C++"
+    
+		targetdir "%{prj.location}\\bin\\$(ProjectName)\\$(Configuration)"
+		objdir "%{prj.location}\\obj"
 
 		bridge_api.includes()
 
