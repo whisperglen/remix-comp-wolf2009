@@ -1,18 +1,26 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <direct.h>
+#include <direct.h> //for mkdir
+#include <concepts>
+#include <d3d9.h>
 
 namespace shared::common
 {
+	template<typename T>
+	concept ShaderObject = std::is_same<T, IDirect3DVertexShader9*>::value ||
+						   std::is_same<T, IDirect3DPixelShader9*>::value;
+
 	// shader cache and whitelist manager
 	class ShaderCache
 	{
 	public:
 		ShaderCache() = default;
 
+
 		// get or compute shader hash
-		uint32_t get_shader_hash(IDirect3DVertexShader9* shader)
+		template<ShaderObject S>
+		uint32_t get_shader_hash(S shader)
 		{
 			if (!shader) {
 				return 0;
@@ -45,37 +53,22 @@ namespace shared::common
 			return hash;
 		}
 
-		uint32_t get_shader_hash(IDirect3DPixelShader9* shader)
+
+		template<typename S>
+		void write_shader_to_file_dispatch(S _, uint32_t hash, const void* data, size_t sz)
 		{
-			if (!shader) {
-				return 0;
-			}
+			write_shader_to_file("zz", hash, data, sz);
+		}
 
-			// check cache
-			if (const auto it = shader_hash_cache_.find(shader); it != shader_hash_cache_.end()) {
-				return it->second;
-			}
-
-			// get bytecode
-			UINT bytecode_size = 0;
-			shader->GetFunction(nullptr, &bytecode_size);
-
-			std::vector<BYTE> bytecode(bytecode_size);
-			shader->GetFunction(bytecode.data(), &bytecode_size);
-
-			// compute and cache hash
-			const uint32_t hash = shared::utils::data_hash32(bytecode.data(), bytecode_size);
-			shader_hash_cache_[shader] = hash;
-
-#if DEBUG && 0
-			// log shaders
-			static std::set<uint32_t> seen_hashes;
-			if (seen_hashes.insert(hash).second) {
-				shared::common::log("shader", std::format("New shader hash : {:08X}", hash), shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
-			}
-#endif
-
-			return hash;
+		template<>
+		void write_shader_to_file_dispatch<IDirect3DVertexShader9*>(IDirect3DVertexShader9* _, uint32_t hash, const void* data, size_t sz)
+		{
+			write_shader_to_file("vs", hash, data, sz);
+		}
+		template<>
+		void write_shader_to_file_dispatch<IDirect3DPixelShader9*>(IDirect3DPixelShader9* _, uint32_t hash, const void* data, size_t sz)
+		{
+			write_shader_to_file("ps", hash, data, sz);
 		}
 
 		void write_shader_to_file(const char *prefix, uint32_t hash, const void *data, size_t sz)
@@ -110,7 +103,8 @@ namespace shared::common
 			}
 		}
 
-		uint32_t get_shader_decomp(IDirect3DVertexShader9* shader, std::string* decomp, bool data_dump)
+		template<ShaderObject S>
+		uint32_t get_shader_decomp(S shader, std::string* decomp, bool data_dump)
 		{
 			if (!shader) {
 				return 0;
@@ -146,60 +140,7 @@ namespace shared::common
 				{
 					if (data_dump)
 					{
-						write_shader_to_file("vs", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
-					}
-					if (decomp)
-					{
-						decomp->assign((const char*)decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
-					}
-					decompbuf->Release();
-				}
-				else
-				{
-					shared::common::log("shader", std::format("Shader {:08X} failed to decompile\n", hash), shared::common::LOG_TYPE::LOG_TYPE_ERROR, true);
-				}
-			}
-
-			return hash;
-		}
-
-		uint32_t get_shader_decomp(IDirect3DPixelShader9* shader, std::string* decomp, bool data_dump)
-		{
-			if (!shader) {
-				return 0;
-			}
-
-			uint32_t hash = 0;
-
-			// check cache
-			if (const auto it = shader_hash_cache_.find(shader); it != shader_hash_cache_.end()) {
-				hash = it->second;
-			}
-
-			// get bytecode
-			UINT bytecode_size = 0;
-			shader->GetFunction(nullptr, &bytecode_size);
-
-			std::vector<BYTE> bytecode(bytecode_size);
-			shader->GetFunction(bytecode.data(), &bytecode_size);
-
-			if (hash == 0)
-			{
-				// compute and cache hash
-				hash = shared::utils::data_hash32(bytecode.data(), bytecode_size);
-				shader_hash_cache_[shader] = hash;
-			}
-
-			if (decomp || data_dump)
-			{
-				HRESULT res;
-				LPD3DXBUFFER decompbuf;
-
-				if (SUCCEEDED((res = D3DXDisassembleShader((DWORD*)bytecode.data(), FALSE, NULL, &decompbuf))))
-				{
-					if (data_dump)
-					{
-						write_shader_to_file("ps", hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
+						write_shader_to_file_dispatch(shader, hash, decompbuf->GetBufferPointer(), decompbuf->GetBufferSize());
 					}
 					if (decomp)
 					{
@@ -231,60 +172,58 @@ namespace shared::common
 			SHADER_SKY
 		};
 
+		enum EShaderCategory
+		{
+			SHCAT_NEW,
+			SHCAT_GEOMETRY,
+			SHCAT_DEFERRED,
+			SHCAT_LIGHT,
+			SHCAT_UI
+		};
+
 		struct SShaderClasify
 		{
 			uint8_t type;
+			uint8_t category;
 			uint8_t albedoStage;
-			SShaderClasify() : type(SHADER_NEW), albedoStage(0) {}
+			SShaderClasify() : type(SHADER_NEW), category(SHCAT_NEW), albedoStage(0) {}
 		};
 
 		const char* get_shader_type_str(EShaderType type)
 		{
 			switch (type)
 			{
-			case SHADER_NEW:
-				return "NEW";
-			case SHADER_UNKNOWN:
-				return "UNKNOWN";
-			case SHADER_GEO:
-				return "GEO";
-			case SHADER_MODEL:
-				return "MODEL";
-			case SHADER_SKINNING:
-				return "SKINNING";
-			case SHADER_SKINNING_2:
-				return "SKINNING_2";
-			case SHADER_IGNORE:
-				return "IGNORE";
-			case SHADER_LIGHT:
-				return "LIGHT";
-			case SHADER_UI:
-				return "UI";
-			case SHADER_UI_FF:
-				return "UI_FF";
-			case SHADER_SKY:
-				return "SKY";
+			case SHADER_NEW: return "NEW";
+			case SHADER_UNKNOWN: return "UNKNOWN";
+			case SHADER_GEO: return "GEO";
+			case SHADER_MODEL: return "MODEL";
+			case SHADER_SKINNING: return "SKINNING";
+			case SHADER_SKINNING_2: return "SKINNING_2";
+			case SHADER_IGNORE: return "IGNORE";
+			case SHADER_LIGHT: return "LIGHT";
+			case SHADER_UI: return "UI";
+			case SHADER_UI_FF: return "UI_FF";
+			case SHADER_SKY: return "SKY";
 			}
 			return "__FAIL__";
 		}
 
-		// check if shader is whitelisted
-		bool is_shader_info_cached(IDirect3DVertexShader9* shader, SShaderClasify& info)
+		const char* get_shader_category_str(EShaderCategory cat)
 		{
-			const uint32_t hash = get_shader_hash(shader);
-			if (hash)
+			switch (cat)
 			{
-				if (shader_storage_.contains(hash))
-				{
-					info = shader_storage_[hash];
-					return true;
-				}
-
+			case SHCAT_NEW: return "NEW";
+			case SHCAT_GEOMETRY: return "GEO";
+			case SHCAT_DEFERRED: return "DEFERRED";
+			case SHCAT_LIGHT: return "LIGHT";
+			case SHCAT_UI: return "UI";
 			}
-			return false;
+			return "__FAIL__";
 		}
 
-		bool is_shader_info_cached(IDirect3DPixelShader9* shader, SShaderClasify& info)
+		// check if shader is cached
+		template<ShaderObject S>
+		bool is_shader_info_cached(S shader, SShaderClasify& info)
 		{
 			const uint32_t hash = get_shader_hash(shader);
 			if (hash)
@@ -307,7 +246,8 @@ namespace shared::common
 		// add hash to whitelist
 		void add_to_cache(uint32_t hash, SShaderClasify& info) {
 			shader_storage_[hash] = info;
-			shared::common::log("shader", std::format("Shader {:08X} marked as {:s}", hash, get_shader_type_str(EShaderType(info.type))), shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
+			shared::common::log("shader", std::format("Shader {:08X} marked as [type:{:10s} cat:{:10s}]", hash, get_shader_type_str(EShaderType(info.type)), get_shader_category_str(EShaderCategory(info.category))),
+				shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
 		}
 
 	private:
