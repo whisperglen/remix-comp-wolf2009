@@ -118,8 +118,10 @@ if errorlevel 1 goto :error
 cl.exe %CXXFLAGS% %INC% /I src\shared ^
     /Yu"std_include.hpp" /Fp%SHARED_PCH% /Fo%OBJDIR%\shared\ ^
     src\shared\globals.cpp ^
+    src\shared\common\config.cpp ^
     src\shared\common\dinput_hook_v1.cpp ^
     src\shared\common\dinput_hook_v2.cpp ^
+    src\shared\common\ffp_state.cpp ^
     src\shared\common\flags.cpp ^
     src\shared\common\imgui_helper.cpp ^
     src\shared\common\loader.cpp ^
@@ -150,7 +152,8 @@ cl.exe %CXXFLAGS% %INC% /I src\comp ^
     src\comp\modules\borderless.cpp ^
     src\comp\modules\d3d9ex.cpp ^
     src\comp\modules\imgui.cpp ^
-    src\comp\modules\renderer.cpp
+    src\comp\modules\renderer.cpp ^
+    src\comp\modules\skinning.cpp
 if errorlevel 1 goto :error
 
 REM ========================================================================

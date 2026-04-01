@@ -46,6 +46,7 @@ namespace shared::globals
 	}
 
 	IDirect3DDevice9* d3d_device = nullptr;
+	IDirect3DDevice9* d3d_real_device = nullptr;
 	IDirect3D9* d3d9_interface = nullptr;
 
 	bool imgui_is_rendering = false;

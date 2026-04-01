@@ -4,6 +4,7 @@
 #include "imgui.hpp"
 #include "renderer.hpp"
 #include "shared/common/shader_cache.hpp"
+#include "shared/common/ffp_state.hpp"
 
 namespace comp
 {
@@ -100,6 +101,7 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters)
 	{
+		shared::common::ffp_state::get().on_reset();
 		shared::common::g_shader_cache.clear_cache();
 		tex_addons::init_texture_addons(true);
 		ImGui_ImplDX9_InvalidateDeviceObjects();
@@ -109,8 +111,10 @@ namespace comp
 		return hr;
 	}
 
+
 	HRESULT d3d9ex::D3D9Device::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 	{
+		shared::common::ffp_state::get().on_present();
 		return m_pIDirect3DDevice9->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 	}
 
@@ -231,13 +235,14 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::BeginScene()
 	{
+		shared::common::ffp_state::get().on_begin_scene();
+
 		if (renderer::is_initialized()) {
 			on_begin_scene_cb();
 		}
-		
+
 		return m_pIDirect3DDevice9->BeginScene();
 	}
-
 	HRESULT d3d9ex::D3D9Device::EndScene()
 	{
 		if (imgui::is_initialized()) {
@@ -362,8 +367,10 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetTexture(DWORD Stage, IDirect3DBaseTexture9* pTexture)
 	{
-		return m_pIDirect3DDevice9->SetTexture(Stage, pTexture);  
+		shared::common::ffp_state::get().on_set_texture(Stage, pTexture);
+		return m_pIDirect3DDevice9->SetTexture(Stage, pTexture);
 	}
+
 
 	HRESULT d3d9ex::D3D9Device::GetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTATETYPE Type, DWORD* pValue)
 	{
@@ -454,9 +461,11 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, CONST void* pVertexStreamZeroData, UINT VertexStreamZeroStride)
 	{
-		// You might want to wrap this if your game uses this
-		const auto hr = m_pIDirect3DDevice9->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
-		return hr;
+		// Disengage FFP before UP draws (matching proxy-minimal WD_DrawPrimitiveUP).
+		// Without this, ffp_active_ stays true and subsequent SetPixelShader calls
+		// are incorrectly swallowed.
+		shared::common::ffp_state::get().disengage(m_pIDirect3DDevice9);
+		return m_pIDirect3DDevice9->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
 	}
 
 	HRESULT d3d9ex::D3D9Device::DrawIndexedPrimitiveUP(
@@ -485,6 +494,7 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexDeclaration(IDirect3DVertexDeclaration9* pDecl)
 	{
+		shared::common::ffp_state::get().on_set_vertex_declaration(pDecl);
 		return m_pIDirect3DDevice9->SetVertexDeclaration(pDecl);
 	}
 
@@ -510,8 +520,10 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexShader(IDirect3DVertexShader9* pShader)
 	{
+		shared::common::ffp_state::get().on_set_vertex_shader(pShader);
 		return m_pIDirect3DDevice9->SetVertexShader(pShader);
 	}
+
 
 	HRESULT d3d9ex::D3D9Device::GetVertexShader(IDirect3DVertexShader9** ppShader)
 	{
@@ -520,6 +532,7 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetVertexShaderConstantF(UINT StartRegister, CONST float* pConstantData, UINT Vector4fCount)
 	{
+		shared::common::ffp_state::get().on_set_vs_const_f(StartRegister, pConstantData, Vector4fCount);
 		return m_pIDirect3DDevice9->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
 
@@ -550,6 +563,7 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetStreamSource(UINT StreamNumber, IDirect3DVertexBuffer9* pStreamData, UINT OffsetInBytes, UINT Stride)
 	{
+		shared::common::ffp_state::get().on_set_stream_source(StreamNumber, pStreamData, OffsetInBytes, Stride);
 		return m_pIDirect3DDevice9->SetStreamSource(StreamNumber, pStreamData, OffsetInBytes, Stride);
 	}
 
@@ -585,6 +599,11 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetPixelShader(IDirect3DPixelShader9* pShader)
 	{
+		// When FFP is active, swallow the call entirely (matching proxy-minimal).
+		// Forwarding SetPixelShader(nullptr) to the real device can confuse
+		// RTX Remix's internal shader state tracking.
+		if (shared::common::ffp_state::get().on_set_pixel_shader(pShader))
+			return S_OK;
 		return m_pIDirect3DDevice9->SetPixelShader(pShader);
 	}
 
@@ -595,6 +614,7 @@ namespace comp
 
 	HRESULT d3d9ex::D3D9Device::SetPixelShaderConstantF(UINT StartRegister, CONST float* pConstantData, UINT Vector4fCount)
 	{
+		shared::common::ffp_state::get().on_set_ps_const_f(StartRegister, pConstantData, Vector4fCount);
 		return m_pIDirect3DDevice9->SetPixelShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
 
@@ -755,6 +775,7 @@ namespace comp
 
 		HRESULT hres = m_pIDirect3D9->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
 		shared::common::log("d3d9", "m_pIDirect3D9->CreateDevice", shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, false);
+		shared::globals::d3d_real_device = *ppReturnedDeviceInterface;
 		*ppReturnedDeviceInterface = new d3d9ex::D3D9Device(*ppReturnedDeviceInterface);
 		shared::globals::d3d_device = *ppReturnedDeviceInterface;
 
@@ -868,6 +889,7 @@ namespace comp
 		HRESULT hres = m_pIDirect3D9Ex->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
 		shared::common::log("d3d9", "m_pIDirect3D9Ex->CreateDevice", shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, false);
 
+		shared::globals::d3d_real_device = *ppReturnedDeviceInterface;
 		*ppReturnedDeviceInterface = new d3d9ex::D3D9Device(*ppReturnedDeviceInterface);
 		shared::globals::d3d_device = *ppReturnedDeviceInterface;
 

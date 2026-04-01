@@ -138,6 +138,12 @@ namespace comp
 
 			StatObj _drawcall_indexed_prim_using_vs = { StatObj::Mode::Single };
 
+			// Skinning diagnostics
+			StatObj _skin_dip_calls{ StatObj::Mode::Single };
+			StatObj _skin_expvb_success{ StatObj::Mode::Single };
+			StatObj _skin_expvb_fail{ StatObj::Mode::Single };
+			StatObj _skin_vtx_valid_draws{ StatObj::Mode::Single };
+			StatObj _skin_vtx_fallback_draws{ StatObj::Mode::Single };
 
 			ImGuiStats()
 			{
@@ -153,6 +159,13 @@ namespace comp
 				m_stat_list.emplace_back("DrawIndexedPrim Calls", &_drawcall_indexed_prim);
 				m_stat_list.emplace_back("DrawIndexedPrim +Ignored", &_drawcall_indexed_prim_incl_ignored);
 				m_stat_list.emplace_back("DrawIndexedPrim VS", &_drawcall_indexed_prim_using_vs);
+
+				m_stat_list.emplace_back();
+				m_stat_list.emplace_back("Skin DIP Calls", &_skin_dip_calls);
+				m_stat_list.emplace_back("Skin ExpVB OK", &_skin_expvb_success);
+				m_stat_list.emplace_back("Skin ExpVB Fail", &_skin_expvb_fail);
+				m_stat_list.emplace_back("Skin Valid-Bone Draws", &_skin_vtx_valid_draws);
+				m_stat_list.emplace_back("Skin Fallback Draws", &_skin_vtx_fallback_draws);
 			}
 
 			void draw_stats();

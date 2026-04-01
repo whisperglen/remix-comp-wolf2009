@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Adapted from Chimera (https://github.com/SnowyMouse/chimera), licensed under GPLv3
+
 #pragma once
 
 namespace comp::chimera

@@ -3,7 +3,9 @@
 
 #include "imgui_internal.h"
 #include "renderer.hpp"
+#include "skinning.hpp"
 #include "shared/common/imgui_helper.hpp"
+#include "shared/common/ffp_state.hpp"
 
 // Allow us to directly call the ImGui WndProc function.
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -131,6 +133,37 @@ namespace comp
 			}
 			else {
 				ImGui::Spacing(0, 4);
+			}
+		}
+
+		// Live skinning state (not per-frame stats)
+		auto& ffp = shared::common::ffp_state::get();
+		ImGui::Spacing(0, 4);
+		ImGui::Text("bone_start_reg: %d   num_bones: %d", ffp.bone_start_reg(), ffp.num_bones());
+		ImGui::Text("cur_decl_is_skinned: %s   view_proj_valid: %s",
+			ffp.cur_decl_is_skinned() ? "yes" : "no",
+			ffp.view_proj_valid() ? "yes" : "no");
+
+		// Dump vertex declaration elements so we can see what Halo CE actually packs
+		auto* decl = ffp.last_decl();
+		if (decl)
+		{
+			static const char* s_usage[] = { "POS","BWEIGHT","BINDICES","NORMAL","PSIZE","TEXCOORD","TANGENT","BINORMAL","TESSF","POSITIONT","COLOR","FOG","DEPTH","SAMPLE" };
+			static const char* s_type[]  = { "F1","F2","F3","F4","D3DCOLOR","UBYTE4","S2","S4","UBYTE4N","S2N","S4N","US2N","US4N","UDEC3","DEC3N","F16_2","F16_4","UNUSED" };
+			UINT n = 0;
+			decl->GetDeclaration(nullptr, &n);
+			if (n > 0 && n <= 20)
+			{
+				D3DVERTEXELEMENT9 elems[20];
+				decl->GetDeclaration(elems, &n);
+				ImGui::Text("Decl elements:");
+				for (UINT i = 0; i < n; i++)
+				{
+					if (elems[i].Stream == 0xFF) break;
+					const char* uname = (elems[i].Usage < 14) ? s_usage[elems[i].Usage] : "?";
+					const char* tname = (elems[i].Type  < 18) ? s_type[elems[i].Type]   : "?";
+					ImGui::Text("  off=%-3d  %-8s  [%d]  %s", elems[i].Offset, uname, elems[i].UsageIndex, tname);
+				}
 			}
 		}
 	}

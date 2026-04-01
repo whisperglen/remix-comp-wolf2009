@@ -21,6 +21,7 @@ namespace shared::globals
 	extern void setup_homepath();
 
 	extern IDirect3DDevice9* d3d_device;
+	extern IDirect3DDevice9* d3d_real_device; // unwrapped device (RTX Remix); used by ffp_state
 	extern IDirect3D9* d3d9_interface;
 
 	extern bool imgui_is_rendering;
