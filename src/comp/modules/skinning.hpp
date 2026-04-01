@@ -41,7 +41,7 @@ namespace comp
 		void on_reset();
 
 	private:
-		static constexpr int SKIN_VTX_SIZE = 32;
+		static constexpr int SKIN_VTX_SIZE = 40;
 		static constexpr UINT STREAMING_CAPACITY = 131072; // 128K verts = 4MB
 
 		IDirect3DVertexDeclaration9* skin_exp_decl_ = nullptr;
