@@ -3,6 +3,11 @@
 
 namespace comp
 {
+#if _DEBUG
+#define DBG_TRACE_FUNC() renderer::dbg_trace_d3d9_call(__FUNCTION__)
+#else
+#define DBG_TRACE_FUNC()
+#endif
 
 	extern comp::game::state_s gstate;
 	extern shared::common::ShaderCache shaders;
@@ -15,8 +20,6 @@ namespace comp
 		extern LPDIRECT3DTEXTURE9 berry;
 		extern void init_texture_addons(bool release = false);
 	}
-
-	extern void handle_mats_inversion();
 
 	class drawcall_mod_context
 	{
@@ -363,6 +366,7 @@ namespace comp
 		}
 
 		static void prepare_structs();
+		static void handle_mats_inversion();
 
 		void manually_trigger_remix_injection(IDirect3DDevice9* dev);
 
@@ -382,6 +386,9 @@ namespace comp
 		bool m_triggered_remix_injection = false;
 		bool m_modified_draw_prim = false;
 		static inline drawcall_mod_context dc_ctx {};
+
+		//debugging
+		static void dbg_trace_d3d9_call(const char* name);
 
 	private:
 		bool m_initialized = false;

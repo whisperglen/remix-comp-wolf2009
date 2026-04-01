@@ -14,6 +14,10 @@ namespace comp
 	comp::game::state_s gstate;
 	shared::common::ShaderCache shaders;
 
+	const int DBG_TRACE_D3D9_BUFF_DEPTH = 20;
+	std::vector<const char*> dbg_trace_d3d9_buff(DBG_TRACE_D3D9_BUFF_DEPTH);
+	uint32_t dbg_trace_d3d9_crt_index = 0;
+
 	namespace tex_addons
 	{
 		bool initialized = false;
@@ -987,7 +991,15 @@ namespace comp
 		gstate.dontDrawUntextured = shared::common::flags::has_flag("skip_untextured_draws");
 	}
 
-	void handle_mats_inversion()
+	void renderer::dbg_trace_d3d9_call(const char* name)
+	{
+		dbg_trace_d3d9_buff[dbg_trace_d3d9_crt_index] = name;
+		dbg_trace_d3d9_crt_index++;
+		if (dbg_trace_d3d9_crt_index >= DBG_TRACE_D3D9_BUFF_DEPTH)
+			dbg_trace_d3d9_crt_index = 0;
+	}
+
+	void renderer::handle_mats_inversion()
 	{
 		if (gstate.proj_inv_dirty)
 		{
