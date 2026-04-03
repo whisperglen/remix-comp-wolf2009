@@ -6,6 +6,7 @@
 // See THIRD-PARTY-NOTICES.md for the full license texts
 
 #pragma once
+#include <unordered_map>
 #include "config.hpp"
 
 namespace comp::game
@@ -56,6 +57,18 @@ namespace shared::common
 		// Restore original texture bindings on all 8 stages. Call after draw.
 		void restore_textures(IDirect3DDevice9* dev);
 
+		// If the current declaration has COLOR but no TEXCOORD, creates (and caches) a patched
+		// declaration with a FLOAT2 TEXCOORD0 element on stream 1. Returns true when a patch was
+		// applied; caller must also call prepare_uv_stream() and restore_patched_decl().
+		bool try_patch_decl_for_color_uv(IDirect3DDevice9* dev);
+
+		// CPU-expands the COLOR attribute of vertices [first_vertex, first_vertex+num_vertices)
+		// into a FLOAT2 UV buffer (R/255, G/255) bound to stream 1. Call after try_patch_decl.
+		void prepare_uv_stream(IDirect3DDevice9* dev, UINT first_vertex, UINT num_vertices);
+
+		// Restores the original vertex declaration and unbinds stream 1.
+		void restore_patched_decl(IDirect3DDevice9* dev);
+
 		// --- Read-only accessors for renderer ---
 
 		bool is_enabled() const { return enabled_; }
@@ -68,6 +81,9 @@ namespace shared::common
 		bool cur_decl_has_pos_t() const { return cur_decl_has_pos_t_; }
 		bool cur_decl_has_texcoord() const { return cur_decl_has_texcoord_; }
 		bool cur_decl_has_color() const { return cur_decl_has_color_; }
+		int cur_decl_color_off() const { return cur_decl_color_off_; }
+		BYTE cur_decl_color_stream() const { return cur_decl_color_stream_; }
+		BYTE cur_decl_color_type() const { return cur_decl_color_type_; }
 		int cur_decl_texcoord_type() const { return cur_decl_texcoord_type_; }
 		bool skinning_setup() const { return skinning_setup_; }
 
@@ -149,6 +165,15 @@ namespace shared::common
 		int cur_decl_texcoord_type_ = -1;
 		int cur_decl_texcoord_off_ = 0;
 
+		// COLOR element info — used to create a patched TEXCOORD0 for decal UV remapping
+		int cur_decl_color_off_ = 0;
+		BYTE cur_decl_color_stream_ = 0;
+		BYTE cur_decl_color_type_ = 0;
+
+		// Dynamic VB used by prepare_uv_stream to hold per-draw FLOAT2 UV data on stream 1
+		IDirect3DVertexBuffer9* uv_stream_vb_ = nullptr;
+		UINT uv_stream_vb_capacity_ = 0;
+
 		// Skinning-related declaration data
 		int cur_decl_num_weights_ = 0;
 		int cur_decl_blend_weight_off_ = 0;
@@ -183,6 +208,10 @@ namespace shared::common
 		// Cached config
 		const config::ffp_settings* cfg_ = nullptr;
 		const comp::game::CameraRenderMatrices* camera_base_ = nullptr;
+
+		// Cache of patched vertex declarations (orig -> patched with stream-1 FLOAT2 TEXCOORD0).
+		// Created on demand when a draw has COLOR but no TEXCOORD (decal UV remapping).
+		std::unordered_map<IDirect3DVertexDeclaration9*, IDirect3DVertexDeclaration9*> patched_decl_cache_;
 
 		// Internal helpers
 		void apply_transforms(IDirect3DDevice9* dev);

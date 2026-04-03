@@ -6,6 +6,41 @@
 #include "game/game.hpp"
 #include "shared/common/ffp_state.hpp"
 
+namespace
+{
+	// Saves and restores alpha blend + Z-write states around decal draws.
+	// Decal geometry (POSITION + D3DCOLOR UV encoding, no TEXCOORD) uses the vertex
+	// shader to handle alpha in the original pipeline; in FFP mode the game does not
+	// set ALPHABLENDENABLE, so we must force it for correct RTX Remix transparency.
+	struct decal_blend_guard
+	{
+		IDirect3DDevice9* dev = nullptr;
+		DWORD ab = FALSE, src = D3DBLEND_ONE, dst = D3DBLEND_ZERO, zw = TRUE;
+
+		void push(IDirect3DDevice9* d)
+		{
+			dev = d;
+			d->GetRenderState(D3DRS_ALPHABLENDENABLE, &ab);
+			d->GetRenderState(D3DRS_SRCBLEND,         &src);
+			d->GetRenderState(D3DRS_DESTBLEND,        &dst);
+			d->GetRenderState(D3DRS_ZWRITEENABLE,     &zw);
+			d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+			d->SetRenderState(D3DRS_SRCBLEND,         D3DBLEND_SRCALPHA);
+			d->SetRenderState(D3DRS_DESTBLEND,        D3DBLEND_INVSRCALPHA);
+			d->SetRenderState(D3DRS_ZWRITEENABLE,     FALSE);
+		}
+
+		void pop()
+		{
+			if (!dev) return;
+			dev->SetRenderState(D3DRS_ALPHABLENDENABLE, ab);
+			dev->SetRenderState(D3DRS_SRCBLEND,         src);
+			dev->SetRenderState(D3DRS_DESTBLEND,        dst);
+			dev->SetRenderState(D3DRS_ZWRITEENABLE,     zw);
+		}
+	};
+}
+
 namespace comp
 {
 	int g_is_rendering_something = 0;
@@ -88,7 +123,22 @@ namespace comp
 			ffp.engage(dev);
 			ffp.setup_albedo_texture(dev);
 
+			const bool decl_patched = ffp.try_patch_decl_for_color_uv(dev);
+			if (decl_patched) {
+				UINT nv;
+				switch (PrimitiveType) {
+					case D3DPT_POINTLIST:    nv = PrimitiveCount; break;
+					case D3DPT_LINELIST:     nv = PrimitiveCount * 2; break;
+					case D3DPT_LINESTRIP:    nv = PrimitiveCount + 1; break;
+					case D3DPT_TRIANGLELIST: nv = PrimitiveCount * 3; break;
+					default:                 nv = PrimitiveCount + 2; break; // strip/fan
+				}
+				ffp.prepare_uv_stream(dev, StartVertex, nv);
+			}
+			decal_blend_guard blend_guard;
+			if (decl_patched) blend_guard.push(dev);
 			hr = dev->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+			if (decl_patched) { blend_guard.pop(); ffp.restore_patched_decl(dev); }
 			im->m_stats._drawcall_prim.track_single();
 		}
 		else
@@ -174,7 +224,15 @@ namespace comp
 				ffp.engage(dev);
 				ffp.setup_albedo_texture(dev);
 
+				const bool decl_patched = ffp.try_patch_decl_for_color_uv(dev);
+				if (decl_patched) {
+					const INT fv = static_cast<INT>(MinVertexIndex) + BaseVertexIndex;
+					if (fv >= 0) ffp.prepare_uv_stream(dev, static_cast<UINT>(fv), NumVertices);
+				}
+				decal_blend_guard blend_guard;
+				if (decl_patched) blend_guard.push(dev);
 				hr = dev->DrawIndexedPrimitive(PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, startIndex, primCount);
+				if (decl_patched) { blend_guard.pop(); ffp.restore_patched_decl(dev); }
 				im->m_stats._drawcall_indexed_prim.track_single();
 			}
 		}
@@ -194,7 +252,15 @@ namespace comp
 				skinning::get()->disable_skinning(dev);
 			ffp.setup_albedo_texture(dev);
 
+			const bool decl_patched = ffp.try_patch_decl_for_color_uv(dev);
+			if (decl_patched) {
+				const INT fv = static_cast<INT>(MinVertexIndex) + BaseVertexIndex;
+				if (fv >= 0) ffp.prepare_uv_stream(dev, static_cast<UINT>(fv), NumVertices);
+			}
+			decal_blend_guard blend_guard;
+			if (decl_patched) blend_guard.push(dev);
 			hr = dev->DrawIndexedPrimitive(PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, startIndex, primCount);
+			if (decl_patched) { blend_guard.pop(); ffp.restore_patched_decl(dev); }
 			im->m_stats._drawcall_indexed_prim.track_single();
 		}
 

@@ -151,6 +151,9 @@ namespace shared::common
 		cur_decl_pos_off_ = 0;
 		cur_decl_normal_off_ = 0;
 		cur_decl_normal_type_ = -1;
+		cur_decl_color_off_ = 0;
+		cur_decl_color_stream_ = 0;
+		cur_decl_color_type_ = 0;
 
 		if (!decl) return;
 
@@ -213,7 +216,13 @@ namespace shared::common
 				break;
 
 			case D3DDECLUSAGE_COLOR:
-				cur_decl_has_color_ = true;
+				if (el.UsageIndex == 0)
+				{
+					cur_decl_has_color_    = true;
+					cur_decl_color_off_    = el.Offset;
+					cur_decl_color_stream_ = el.Stream;
+					cur_decl_color_type_   = el.Type;
+				}
 				break;
 			}
 		}
@@ -265,6 +274,13 @@ namespace shared::common
 		bone_start_reg_ = 0;
 		num_bones_ = 0;
 		textures_dirty_ = true;
+
+		for (auto& [orig, patched] : patched_decl_cache_)
+			if (patched) patched->Release();
+		patched_decl_cache_.clear();
+
+		if (uv_stream_vb_) { uv_stream_vb_->Release(); uv_stream_vb_ = nullptr; }
+		uv_stream_vb_capacity_ = 0;
 
 		log("FFP", "State reset");
 	}
@@ -338,6 +354,121 @@ namespace shared::common
 		for (DWORD ts = 0; ts < 8; ts++)
 			dev->SetTexture(ts, cur_texture_[ts]);
 		textures_dirty_ = true;
+	}
+
+	bool ffp_state::try_patch_decl_for_color_uv(IDirect3DDevice9* dev)
+	{
+		if (!cur_decl_has_color_ || cur_decl_has_texcoord_ || !last_decl_ || !dev)
+			return false;
+
+		auto it = patched_decl_cache_.find(last_decl_);
+		if (it != patched_decl_cache_.end())
+		{
+			dev->SetVertexDeclaration(it->second);
+			return true;
+		}
+
+		UINT num_elems = 0;
+		if (FAILED(last_decl_->GetDeclaration(nullptr, &num_elems))) return false;
+		if (num_elems == 0 || num_elems > 32) return false;
+
+		// 32 original elements + 1 new TEXCOORD0 + 1 D3DDECL_END
+		D3DVERTEXELEMENT9 src_elems[34];
+		if (FAILED(last_decl_->GetDeclaration(src_elems, &num_elems))) return false;
+
+		// Build the patched declaration:
+		//   - Copy all original elements EXCEPT COLOR0. The COLOR bytes encode UV, not actual
+		//     diffuse color. Keeping the COLOR element would make FFP read those bytes as vertex
+		//     diffuse, multiplying (darkening) the texture and corrupting the alpha channel.
+		//     With it removed, FFP falls back to the material diffuse ({1,1,1,1} from
+		//     setup_lighting), which is correct: texture color and alpha pass through unmodified.
+		//   - Append a FLOAT2 TEXCOORD0 on stream 1 (filled per-draw by prepare_uv_stream with
+		//     R/255 → U, G/255 → V, matching the original shader's mov oT0.xy, v4).
+		D3DVERTEXELEMENT9 elems[34];
+		UINT out = 0;
+		for (UINT i = 0; i < num_elems - 1; ++i)  // -1 to skip D3DDECL_END at tail
+		{
+			if (src_elems[i].Usage == D3DDECLUSAGE_COLOR && src_elems[i].UsageIndex == 0)
+				continue;
+			elems[out++] = src_elems[i];
+		}
+
+		const D3DVERTEXELEMENT9 tc_elem = {
+			1,                      // stream 1 — separate UV stream, see prepare_uv_stream()
+			0,                      // offset 0
+			D3DDECLTYPE_FLOAT2,
+			D3DDECLMETHOD_DEFAULT,
+			D3DDECLUSAGE_TEXCOORD,
+			0
+		};
+		elems[out++] = tc_elem;
+		elems[out]   = D3DDECL_END();
+
+		IDirect3DVertexDeclaration9* patched = nullptr;
+		if (FAILED(dev->CreateVertexDeclaration(elems, &patched))) return false;
+
+		patched_decl_cache_[last_decl_] = patched;
+		dev->SetVertexDeclaration(patched);
+		return true;
+	}
+
+	void ffp_state::prepare_uv_stream(IDirect3DDevice9* dev, UINT first_vertex, UINT num_vertices)
+	{
+		if (!dev || num_vertices == 0 || !cur_decl_has_color_) return;
+
+		const BYTE cs = cur_decl_color_stream_;
+		if (cs >= 4) return;
+
+		auto* src_vb    = stream_vb_[cs];
+		const UINT stride = stream_stride_[cs];
+		const UINT src_off = stream_offset_[cs];
+		if (!src_vb || stride == 0) return;
+
+		// Grow the UV VB if it can't hold all vertices we'll write
+		const UINT needed = first_vertex + num_vertices;
+		if (!uv_stream_vb_ || uv_stream_vb_capacity_ < needed) {
+			if (uv_stream_vb_) { uv_stream_vb_->Release(); uv_stream_vb_ = nullptr; }
+			const UINT cap = needed < 65536u ? 65536u : needed + 1024u;
+			if (FAILED(dev->CreateVertexBuffer(cap * sizeof(float) * 2,
+					D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY, 0, D3DPOOL_DEFAULT,
+					&uv_stream_vb_, nullptr)))
+				return;
+			uv_stream_vb_capacity_ = cap;
+		}
+
+		// Lock source VB (full) to read D3DCOLOR bytes
+		void* src_raw = nullptr;
+		if (FAILED(src_vb->Lock(0, 0, &src_raw, 0))) return;
+
+		// Lock UV VB with DISCARD — gives fresh backing memory, no GPU stall
+		float* uv_raw = nullptr;
+		if (FAILED(uv_stream_vb_->Lock(0, 0, reinterpret_cast<void**>(&uv_raw), D3DLOCK_DISCARD))) {
+			src_vb->Unlock();
+			return;
+		}
+
+		// D3DCOLOR in memory is BGRA: byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=A.
+		// The decal shader (mov oT0.xy, v4) reads hardware-expanded (R/255, G/255) as UV.
+		const auto* base = static_cast<const BYTE*>(src_raw) + src_off + cur_decl_color_off_;
+		float* uv_dst = uv_raw + first_vertex * 2;
+		for (UINT i = 0; i < num_vertices; ++i) {
+			const auto* c = base + (first_vertex + i) * stride;
+			uv_dst[i * 2 + 0] = c[2] / 255.0f;  // R → U
+			uv_dst[i * 2 + 1] = c[1] / 255.0f;  // G → V
+		}
+
+		uv_stream_vb_->Unlock();
+		src_vb->Unlock();
+
+		dev->SetStreamSource(1, uv_stream_vb_, 0, sizeof(float) * 2);
+	}
+
+	void ffp_state::restore_patched_decl(IDirect3DDevice9* dev)
+	{
+		if (last_decl_ && dev) {
+			dev->SetVertexDeclaration(last_decl_);
+			dev->SetStreamSource(1, nullptr, 0, 0);
+		}
 	}
 
 	// ---- Internal helpers ----
