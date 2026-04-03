@@ -63,9 +63,7 @@ namespace comp
 		ffp.engage(dev);
 		ffp.setup_albedo_texture(dev);
 
-		dev->SetTransform(D3DTS_WORLDMATRIX(0), &shared::globals::IDENTITY);
-		dev->SetRenderState(D3DRS_VERTEXBLEND, D3DVBF_DISABLE);
-		dev->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, FALSE);
+		upload_bones(dev);
 
 		IDirect3DVertexDeclaration9* orig_decl = nullptr;
 		dev->GetVertexDeclaration(&orig_decl);
@@ -77,6 +75,9 @@ namespace comp
 		dev->SetVertexDeclaration(orig_decl);
 		if (orig_decl) orig_decl->Release();
 		dev->SetStreamSource(0, src_vb, ffp.stream_offset(0), stride);
+		//disable gpu skinning
+		dev->SetRenderState(D3DRS_VERTEXBLEND, D3DVBF_DISABLE);
+		dev->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, FALSE);
 
 		return hr;
 	}
@@ -95,8 +96,10 @@ namespace comp
 		//   FLOAT3 pos, FLOAT3 normal, FLOAT2 uv
 		D3DVERTEXELEMENT9 elems[] = {
 			{ 0,  0, D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0 },
-			{ 0, 12, D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL, 0 },
-			{ 0, 24, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
+			{ 0, 12, D3DDECLTYPE_UBYTE4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_BLENDINDICES, 0 },
+			{ 0, 16, D3DDECLTYPE_FLOAT1, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_BLENDWEIGHT, 0 },
+			{ 0, 20, D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL, 0 },
+			{ 0, 32, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
 			D3DDECL_END()
 		};
 
@@ -252,43 +255,12 @@ namespace comp
 			const int reg1 = bone_start + idx1 * rpb;
 			const bool valid = bones_valid_base && reg0 + rpb <= 256 && reg1 + rpb <= 256;
 
-			if (valid)
-			{
-				const float* b0 = &vs_const[reg0 * 4];
-
-				if (w1 > 1e-5f)
-				{
-					const float* b1 = &vs_const[reg1 * 4];
-					out[0] = w0*(b0[0]*px+b0[1]*py+b0[2]*pz+b0[3]) + w1*(b1[0]*px+b1[1]*py+b1[2]*pz+b1[3]);
-					out[1] = w0*(b0[4]*px+b0[5]*py+b0[6]*pz+b0[7]) + w1*(b1[4]*px+b1[5]*py+b1[6]*pz+b1[7]);
-					out[2] = w0*(b0[8]*px+b0[9]*py+b0[10]*pz+b0[11]) + w1*(b1[8]*px+b1[9]*py+b1[10]*pz+b1[11]);
-
-					float bnx = w0*(b0[0]*nx+b0[1]*ny+b0[2]*nz) + w1*(b1[0]*nx+b1[1]*ny+b1[2]*nz);
-					float bny = w0*(b0[4]*nx+b0[5]*ny+b0[6]*nz) + w1*(b1[4]*nx+b1[5]*ny+b1[6]*nz);
-					float bnz = w0*(b0[8]*nx+b0[9]*ny+b0[10]*nz) + w1*(b1[8]*nx+b1[9]*ny+b1[10]*nz);
-					const float len = sqrtf(bnx*bnx + bny*bny + bnz*bnz);
-					if (len > 1e-6f) { bnx /= len; bny /= len; bnz /= len; }
-					out[3] = bnx; out[4] = bny; out[5] = bnz;
-				}
-				else
-				{
-					// Single bone — skip second bone entirely
-					out[0] = b0[0]*px + b0[1]*py + b0[2]*pz + b0[3];
-					out[1] = b0[4]*px + b0[5]*py + b0[6]*pz + b0[7];
-					out[2] = b0[8]*px + b0[9]*py + b0[10]*pz + b0[11];
-
-					float bnx = b0[0]*nx + b0[1]*ny + b0[2]*nz;
-					float bny = b0[4]*nx + b0[5]*ny + b0[6]*nz;
-					float bnz = b0[8]*nx + b0[9]*ny + b0[10]*nz;
-					const float len = sqrtf(bnx*bnx + bny*bny + bnz*bnz);
-					if (len > 1e-6f) { bnx /= len; bny /= len; bnz /= len; }
-					out[3] = bnx; out[4] = bny; out[5] = bnz;
-				}
-			}
-			else
 			{
 				out[0] = px; out[1] = py; out[2] = pz;
-				out[3] = nx; out[4] = ny; out[5] = nz;
+				BYTE* outidx = (BYTE*)&out[3];
+				outidx[0] = idx0; outidx[1] = idx1; outidx[2] = outidx[3] = 0;
+				out[4] = w0;
+				out[5] = nx; out[6] = ny; out[7] = nz;
 			}
 
 			if (v == 0) first_vtx_valid = valid;
@@ -299,23 +271,23 @@ namespace comp
 				if (tc_is_half)
 				{
 					auto* h = reinterpret_cast<const unsigned short*>(&sv[tc_off]);
-					out[6] = half_to_float(h[0]);
-					out[7] = half_to_float(h[1]);
+					out[8] = half_to_float(h[0]);
+					out[9] = half_to_float(h[1]);
 				}
 				else if (tc_is_float)
 				{
 					auto* tc = reinterpret_cast<const float*>(&sv[tc_off]);
-					out[6] = tc[0];
-					out[7] = (tc_type >= D3DDECLTYPE_FLOAT2) ? tc[1] : 0.0f;
+					out[8] = tc[0];
+					out[9] = (tc_type >= D3DDECLTYPE_FLOAT2) ? tc[1] : 0.0f;
 				}
 				else
 				{
-					out[6] = out[7] = 0.0f;
+					out[8] = out[9] = 0.0f;
 				}
 			}
 			else
 			{
-				out[6] = out[7] = 0.0f;
+				out[8] = out[9] = 0.0f;
 			}
 		}
 
