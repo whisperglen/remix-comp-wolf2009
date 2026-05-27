@@ -35,7 +35,9 @@ namespace comp::game
 		bool dontDrawUntextured;
 		int numTextures;
 
+		bool deferredStarted;
 		bool skyHasRendered;
+		bool uiStarted;
 
 		void* renderTargets[10];
 		float vs_constants[256][4];

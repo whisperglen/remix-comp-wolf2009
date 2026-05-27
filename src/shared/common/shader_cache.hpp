@@ -181,12 +181,12 @@ namespace shared::common
 			SHCAT_UI
 		};
 
-		struct SShaderClasify
+		struct ShaderClasify
 		{
 			uint8_t type;
 			uint8_t category;
 			uint8_t albedoStage;
-			SShaderClasify() : type(SHADER_NEW), category(SHCAT_NEW), albedoStage(0) {}
+			ShaderClasify() : type(SHADER_NEW), category(SHCAT_NEW), albedoStage(0) {}
 		};
 
 		const char* get_shader_type_str(EShaderType type)
@@ -223,14 +223,14 @@ namespace shared::common
 
 		// check if shader is cached
 		template<ShaderObject S>
-		bool is_shader_info_cached(S shader, SShaderClasify& info)
+		bool is_shader_info_cached(S shader, ShaderClasify& info)
 		{
 			const uint32_t hash = get_shader_hash(shader);
 			if (hash)
 			{
-				if (shader_storage_.contains(hash))
+				if (const auto it = shader_storage_.find(hash); it != shader_storage_.end())
 				{
-					info = shader_storage_[hash];
+					info = it->second;
 					return true;
 				}
 
@@ -241,10 +241,11 @@ namespace shared::common
 		// clear cache
 		void clear_cache() {
 			shader_hash_cache_.clear();
+			shader_storage_.clear();
 		}
 
 		// add hash to whitelist
-		void add_to_cache(uint32_t hash, SShaderClasify& info) {
+		void add_to_cache(uint32_t hash, ShaderClasify& info) {
 			shader_storage_[hash] = info;
 			shared::common::log("shader", std::format("Shader {:08X} marked as [type:{:10s} cat:{:10s}]", hash, get_shader_type_str(EShaderType(info.type)), get_shader_category_str(EShaderCategory(info.category))),
 				shared::common::LOG_TYPE::LOG_TYPE_DEFAULT, true);
@@ -252,7 +253,7 @@ namespace shared::common
 
 	private:
 		std::unordered_map<void*, uint32_t> shader_hash_cache_;
-		std::unordered_map<uint32_t, SShaderClasify> shader_storage_ = {};
+		std::unordered_map<uint32_t, ShaderClasify> shader_storage_;
 	};
 
 	// global instance

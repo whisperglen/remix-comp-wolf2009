@@ -57,12 +57,12 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: 'true'
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.1.3
+      uses: microsoft/setup-msbuild@v3
 
     - name: Restore NuGet packages
       working-directory: ${{env.GITHUB_WORKSPACE}}
@@ -83,7 +83,7 @@ jobs:
       run: 7z a -tzip ./build/bin/${{matrix.zip_name}} ./build/bin/${{matrix.bin_name}}/*
 
     - name: Upload artifact
-      uses: actions/github-script@v4
+      uses: actions/github-script@v6
       with:
         script: |
           const fs = require('fs');

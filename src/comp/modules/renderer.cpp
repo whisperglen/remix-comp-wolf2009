@@ -483,8 +483,8 @@ namespace comp
 		using namespace shared::common;
 		using namespace comp::game;
 
-		ShaderCache::SShaderClasify info;
-		if(!shaders.is_shader_info_cached(pShader, info))
+		ShaderCache::ShaderClasify info;
+		if(pShader && !shaders.is_shader_info_cached(pShader, info))
 		{
 			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
 			std::string decomp;
@@ -559,8 +559,8 @@ namespace comp
 		using namespace shared::common;
 		using namespace comp::game;
 
-		ShaderCache::SShaderClasify info;
-		if(!shaders.is_shader_info_cached(pShader, info))
+		ShaderCache::ShaderClasify info;
+		if(pShader && !shaders.is_shader_info_cached(pShader, info))
 		{
 			bool dump_shader = shared::common::flags::has_flag("dump_shaders");;
 			std::string decomp;
@@ -854,7 +854,9 @@ namespace comp
 	void renderer::on_present(IDirect3DDevice9* dev)
 	{
 		gstate.drawcallCount = 0;
+		gstate.deferredStarted = false;
 		gstate.skyHasRendered = false;
+		gstate.uiStarted = false;
 	}
 	// ---
 
