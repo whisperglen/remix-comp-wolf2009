@@ -2,35 +2,8 @@
 
 <br>
 
-<div align="center" markdown="1"> 
-
-A codebase that can be used for compatibility mods for NVIDIA's [RTX Remix](https://github.com/NVIDIAGameWorks/rtx-remix).  
-
-If you want to support my work,   
-consider buying me a [Coffee](https://ko-fi.com/xoxor4d) or by becoming a [Patreon](https://patreon.com/xoxor4d)
-
-
-Feel free to join the discord server: https://discord.gg/FMnfhpfZy9
-
-<br>
-
-</div>
-
-
 # Overview
-This repository contains a codebase that can be used as a starting point for a potential RTX Remix Compatibility Mod.  
-It is not a generic fix, nor does it make a game compatible on its own. Any such functionality must be implemented by users themselves.
-
-#### It features:
-
-- A hooked D3D9 interface, with every function detoured for easy access and interception
-- Logic to aid with drawcall modifications
-- A basic ImGui menu for debugging purposes
-
-The codebase includes [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v9.7.0), which is used to load the Compatibility Mod itself.  
-Code could be easily modified to act as a d3d9 proxy which then loads a renamed "bridge remix d3d9.dll".
-
-<br>
+My own fork of xoxor4d's Remix Compatibility Codebase: https://github.com/xoxor4d/remix-comp-base
 
 ## Documentation / Guides
 
